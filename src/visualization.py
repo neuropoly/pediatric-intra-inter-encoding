@@ -74,3 +74,19 @@ def plot_log_jacobian_per_age_interval(df_279):
     plt.legend()
     plt.grid(True)
     plt.show()
+
+def visualize_model_performance(model, save_path):
+    fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+    ax = ax.ravel()
+
+    for i, metric in enumerate(["acc", "loss"]):
+        ax[i].plot(model.history.history[metric])
+        ax[i].plot(model.history.history["val_" + metric])
+        ax[i].set_title("Model {}".format(metric))
+        ax[i].set_xlabel("epochs")
+        ax[i].set_ylabel(metric)
+        ax[i].legend(["train", "val"])  
+    # Save the plot as a PNG file at the specified location
+    plt.savefig(f'{save_path}/performance_graph.png')
+    # Show the plot in your Python environment
+    plt.show()

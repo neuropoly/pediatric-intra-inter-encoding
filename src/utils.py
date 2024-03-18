@@ -1,5 +1,8 @@
 import pandas as pd
 import numpy as np
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.metrics import confusion_matrix
 
 
 def find_pairs_by_scan_ids(scan_ids, pairs):
@@ -173,3 +176,42 @@ def create_df_log_jacobian_data(all_participant_ids_and_scan_ids, all_sets, full
                 print('Row index test empty')
 
     
+def calculate_accuracy_test_set(model, x_test, y_test, save_path):
+    class_names = ["inter", "intra"]
+    correct_predictions = 0
+    y_pred = []
+
+    for sample_index in range(x_test.shape[0]):
+        img_to_predict = x_test[sample_index].reshape(1, *x_test[sample_index].shape)
+        true_class = y_test[sample_index]
+
+        prediction = model.predict(img_to_predict)[0]
+        
+        predicted_class = 1 if prediction[0] >= 0.5 else 0  # Assuming a threshold of 0.5
+        y_pred.append(predicted_class)
+
+        predicted_class_name = class_names[predicted_class]
+        true_class_name = class_names[true_class]
+
+        if predicted_class == true_class:
+            # print(f"Sample {sample_index}: The model correctly predicted the MRI scan as {predicted_class_name}.")
+            correct_predictions += 1
+        else:
+            print(f"Sample {sample_index}: The model predicted the MRI scan as {predicted_class_name}, but the true class is {true_class_name}.")
+    accuracy = accuracy_score(y_test, y_pred)
+    f1_score_calc = f1_score(y_test, y_pred)
+    accuracy_percentage = (correct_predictions / x_test.shape[0]) * 100
+    print(f"Accuracy on test set: {accuracy_percentage:.2f}% ({correct_predictions}/{x_test.shape[0]} samples were correct).")
+    y_pred_class = [class_names[item] for item in y_pred]
+    y_test_class = [class_names[item] for item in y_test]
+
+    cm = confusion_matrix(y_test_class, y_pred_class)
+    tn, fp, fn, tp = cm.ravel()
+    print('tn:', tn, 'fp:', fp, 'fn:', fn, 'tp:', tp)
+
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['inter', 'intra'])
+
+    disp.plot()
+    plt.savefig(f'{save_path}/confusion_matrix.png')
+    plt.show()
+    return accuracy, f1_score_calc

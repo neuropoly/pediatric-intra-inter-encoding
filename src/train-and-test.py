@@ -13,15 +13,13 @@ import re
 from tensorflow import keras
 from tensorflow.keras import layers
 from sklearn.model_selection import KFold, train_test_split
+from model import get_model
+from visualization import visualize_model_performance
+from utils import calculate_accuracy_test_set
+from preprocessing import data_loaders, split_into_indices, process_selected_sets, process_scan
 
 
-class CustomModelCheckpoint(keras.callbacks.ModelCheckpoint):
-    def __init__(self, train_dir, **kwargs):
-        self.train_dir = train_dir
-        filepath = f"{self.train_dir}/3d_image_classification_epoch{{epoch:02d}}.h5"
-        super().__init__(filepath=filepath, **kwargs)
-
-def train_no_overlap(model, train_dataset, validation_dataset, epochs, train_iteration='_no_overlap_9'):
+def train_loop_no_overlap(model, train_dataset, validation_dataset, epochs, train_iteration='_no_overlap_9'):
     # Train iteration number to be changed based on the experiment
     # train_iteration = '_no_overlap_9'
     # Define train_dir and log_dir
@@ -43,15 +41,6 @@ def train_no_overlap(model, train_dataset, validation_dataset, epochs, train_ite
         optimizer=keras.optimizers.Adam(learning_rate=lr_schedule),
         metrics=["acc"],
     )
-
-    # Define callbacks.
-    # checkpoint_cb = CustomModelCheckpoint(
-    #     train_dir,
-    #     save_best_only=True,
-    #     monitor='val_loss',  # Set the metric to monitor, typically validation loss
-    #     verbose=1,  # Set to 1 to receive a message when a new best model is saved
-    #     mode='min'  # Set to 'min' if you are monitoring a metric like validation loss
-    # )
 
     checkpoint = tf.keras.callbacks.ModelCheckpoint(f'{train_dir}/model.h5', 
 							monitor='val_loss', verbose=1, 
@@ -75,7 +64,108 @@ def train_no_overlap(model, train_dataset, validation_dataset, epochs, train_ite
     )
     return train_dir, callbacks_list, model
 
-def train_overlap():
+def train_no_overlap(experiment_name, intra_scan_paths, inter_scan_paths, all_sets):
+    epochs = 100
+    train_iteration_names = [f'{experiment_name}_no_overlap_{i}' for i in range(10)]
+
+    VALIDATION_ACCURACY = []
+    VALIDATION_LOSS = []
+    TEST_ACCURACY = []
+    TEST_F1_SCORE = []
+
+    TOTAL_NUM_SAMPLES = []
+
+    nbr_sets = 10
+    train_indices_list, val_indices_list, test_indices_list = split_into_indices(all_sets, nbr_sets)
+
+    for train_iteration_name in train_iteration_names:
+        split_nbr = int(re.search(r'\d+', train_iteration_name).group())
+        selected_train_paths, x_train, y_train, \
+        selected_val_paths, x_val, y_val, \
+        selected_test_paths, x_test, y_test = process_selected_sets(
+        split_nbr, intra_scan_paths, inter_scan_paths, 
+        train_indices_list, val_indices_list, test_indices_list
+        )
+        print('X_TRAIN', x_train.shape)
+        print('X_VAL', x_val.shape)
+        total_num_samples = x_train.shape[3]+x_val.shape[3]+x_test.shape[3]
+        train_dataset, validation_dataset = data_loaders(x_train, y_train, x_val, y_val, batch_size=2)
+        # Create new model
+        model = get_model(width=128, height=128, depth=64)
+        
+        train_dir, callbacks_list, model = train_loop_no_overlap(model, train_dataset, validation_dataset, epochs, train_iteration_name)
+
+        visualize_model_performance(model, train_dir)
+        # LOAD BEST MODEL to evaluate the performance of the model
+        model.load_weights(f'{train_dir}/model.h5')
+        
+        results = model.evaluate(validation_dataset)
+        results = dict(zip(model.metrics_names,results))
+
+        accuracy, f1_score_calc = calculate_accuracy_test_set(model, x_test, y_test, train_dir)
+        
+        VALIDATION_ACCURACY.append(results['acc'])
+        VALIDATION_LOSS.append(results['loss'])
+        TEST_ACCURACY.append(accuracy)
+        TEST_F1_SCORE.append(f1_score_calc)
+        TOTAL_NUM_SAMPLES.append(total_num_samples)
+        tf.keras.backend.clear_session()
+    
+    print('total num samples', TOTAL_NUM_SAMPLES)
+    print('validation accuracy', VALIDATION_ACCURACY)
+    print('test accuracy', TEST_ACCURACY)
+    print('test f1_score', TEST_F1_SCORE)
+    print('mean validation accuracy', np.mean(VALIDATION_ACCURACY), np.std(VALIDATION_ACCURACY))
+    print('mean test accuracy', np.mean(TEST_ACCURACY), np.std(TEST_ACCURACY))
+    print('mean f1 score', np.mean(TEST_F1_SCORE), np.std(TEST_F1_SCORE))
+    
+
+def get_model_name(k):
+    return 'model_'+str(k)+'.h5'
+
+def extract_train_data_overlap(intra_scan_paths, inter_scan_paths, nbr_intra_pairs, num_indices, random_state):
+    
+    # Set a random seed for reproducibility
+    # random_state = 42
+    np.random.seed(random_state)  # You can use any integer value
+
+    # Read and process the scans only when the train, val, test sets are selected.
+    # Each scan is then resized across height, width, and depth and rescaled.
+    intra_scans = np.array(intra_scan_paths)
+    inter_scans = np.array(inter_scan_paths)
+
+    # For the MRI scans having a logJacobian derived from intra reg assign 1, 
+    # for inter assign 0.
+    intra_labels = np.array([1 for _ in range(len(intra_scans))])
+    inter_labels = np.array([0 for _ in range(len(inter_scans))])
+
+    X = np.concatenate((intra_scans, inter_scans), axis=0)
+    y = np.concatenate((intra_labels, inter_labels), axis=0)
+
+    # Number of indices to be selected to match the no_overlap training
+    # num_indices = 305
+
+    # Randomly select indices from the first 434 elements (intra part)
+    first_indices = np.random.choice(nbr_intra_pairs, size=num_indices // 2, replace=False)
+
+    # Randomly select indices from the last 421 elements
+    last_indices = np.random.choice(range(nbr_intra_pairs, len(y)), size=num_indices - len(first_indices), replace=False)
+
+    # Concatenate both sets of indices
+    selected_indices = np.concatenate((first_indices, last_indices))
+
+    # Shuffle the indices using the random state
+    rng = np.random.default_rng(random_state)
+    rng.shuffle(selected_indices)
+
+    selected_train_paths = [X[i] for i in selected_indices]
+    train_data = np.array([process_scan(path) for path in selected_train_paths])
+    y_data = y[selected_indices]
+
+    return train_data, y_data
+
+
+def train_overlap(train_data, y_data, random_state):
     VALIDATION_ACCURACY = []
     VALIDATION_LOSS = []
     TEST_ACCURACY = []
@@ -89,7 +179,7 @@ def train_overlap():
     lr_schedule = keras.optimizers.schedules.ExponentialDecay(
                     initial_learning_rate, decay_steps=100000, decay_rate=0.96, staircase=True
                 )
-    for train_index, test_index in kf.split(train_data):
+    for train_index, test_index in kf.split(train_data, y_data, random_state):
         train_iteration = f'_overlap_{fold_var}'
         train_dir = os.path.join(os.getcwd(), f'train{train_iteration}')
         # Create both train_dir if not already existent
@@ -144,3 +234,10 @@ def train_overlap():
         TEST_F1_SCORE.append(f1_score_calc)
         tf.keras.backend.clear_session()
         fold_var += 1
+
+    print('validation accuracy', VALIDATION_ACCURACY)
+    print('test accuracy', TEST_ACCURACY)
+    print('test f1_score', TEST_F1_SCORE)
+    print('mean validation accuracy', np.mean(VALIDATION_ACCURACY), np.std(VALIDATION_ACCURACY))
+    print('mean test accuracy', np.mean(TEST_ACCURACY), np.std(TEST_ACCURACY))
+    print('mean f1 score', np.mean(TEST_F1_SCORE), np.std(TEST_F1_SCORE))
