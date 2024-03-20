@@ -5,6 +5,7 @@ from timeit import default_timer as timer
 from datetime import timedelta
 import pandas as pd
 import csv
+import numpy as np
 import random
 import shutil
 
@@ -50,6 +51,125 @@ def create_participant_file(output_dir):
                 count_ses += 1
             count_ses = 0
             count_sub += 1
+
+def find_intra_pairs(data):
+    pairs = []
+    for i in range(len(data)):
+        for j in range(i + 1, len(data)):
+            participant_id_1, scan_id_1, age_1 = data[i]
+            participant_id_2, scan_id_2, age_2 = data[j]
+
+            if participant_id_1 == participant_id_2:
+                pairs.append(((participant_id_1, scan_id_1, age_1), (participant_id_2, scan_id_2, age_2)))
+
+    return pairs
+
+def find_inter_pairs(data):
+    pairs = []
+    for i in range(len(data)):
+        for j in range(i + 1, len(data)):
+            participant_id_1, scan_id_1, age_1 = data[i]
+            participant_id_2, scan_id_2, age_2 = data[j]
+
+            
+            if participant_id_1 != participant_id_2:
+                pairs.append(((participant_id_1, scan_id_1, age_1), (participant_id_2, scan_id_2, age_2)))
+    
+    return pairs
+
+def find_closest_values_with_indices(target_value, array):
+    
+    # Calculate the absolute differences between the target value and each element in the array
+    differences = np.abs(array - target_value)
+    
+    # Find the indices of the two closest values
+    closest_indices = np.argsort(differences)[:2]
+    
+    # Get the corresponding closest values
+    closest_values = array[closest_indices]
+    closest_values = sorted(closest_values)
+    
+    return closest_values, closest_indices[0]
+
+def find_inter_pairs_with_matching_distribution_init(data, n_bins):
+    # Calculate histogram distribution of intra_array
+    intra_pairs_info = find_intra_pairs(data)
+    intra_age_intervals = np.abs([item[0][2]-item[1][2] for item in intra_pairs_info])
+    hist_distribution_intra_age_intervals, bin_edges_intra_age_intervals = np.histogram(intra_age_intervals, bins=n_bins) # Mean: 1.152, std: 0.684
+
+    intra_init_ages = [min(item[0][2],item[1][2]) for item in intra_pairs_info]
+    hist_distribution_intra_init_ages, bin_edges_intra_init_ages = np.histogram(intra_init_ages, bins=n_bins) # Mean: 1.152, std: 0.684
+
+
+    # Known values for the new group
+    inter_pairs_info = find_inter_pairs(data)
+    inter_age_intervals = np.abs([item[0][2]-item[1][2] for item in inter_pairs_info])
+
+    inter_init_ages = [min(item[0][2],item[1][2]) for item in inter_pairs_info]
+
+    
+    inter_pairs_to_keep = []
+    # hist_distribution_inter_age_intervals = np.zeros(len(hist_distribution_intra_age_intervals))
+    # hist_distribution_inter_init_ages = np.zeros(len(hist_distribution_intra_init_ages))
+    # counter_intervals = 0
+    # counter_init = 0
+    for idx, intra_pair in enumerate(intra_pairs_info):
+        limits_intervals, idx_bin_intervals  = find_closest_values_with_indices(intra_age_intervals[idx], bin_edges_intra_age_intervals)
+        limits_init, idx_bin_init = find_closest_values_with_indices(intra_init_ages[idx], bin_edges_intra_init_ages)
+        inter_set_age_intervals = set()
+        inter_set_init_ages = set()
+        # target_bin_count_intervals = hist_distribution_intra_age_intervals[idx_bin_intervals]
+        # target_bin_count_init = hist_distribution_intra_init_ages[idx_bin_init]
+        for idx, inter_pair in enumerate(inter_pairs_info):
+            if inter_age_intervals[idx] >= limits_intervals[0] and inter_age_intervals[idx] < limits_intervals[1]:
+                inter_set_age_intervals.add(inter_pair)
+            if inter_init_ages[idx] >= limits_init[0] and inter_init_ages[idx] < limits_init[1]:
+                inter_set_init_ages.add(inter_pair)
+        
+        # actual_bin_count_intervals = hist_distribution_inter_age_intervals[idx_bin_intervals]
+        # actual_bin_count_init = hist_distribution_inter_init_ages[idx_bin_init]
+        intersection = inter_set_age_intervals & inter_set_init_ages
+        for element in intersection:
+
+            if element not in inter_pairs_to_keep:
+                inter_pairs_to_keep.append(element)
+
+                break
+
+
+    # for lim_inf_intervals, lim_sup_intervals, bin_count_intervals, lim_inf_init, lim_sup_init, bin_count_init in zip(bin_edges_intra_age_intervals, bin_edges_intra_age_intervals[1:], hist_distribution_intra_age_intervals, bin_edges_intra_init_ages, bin_edges_intra_init_ages[1:], hist_distribution_intra_init_ages):
+    #     count_added = 0
+    #     for idx, inter_pair in enumerate(inter_pairs_info):
+    #         if inter_age_intervals[idx] >= lim_inf_intervals and inter_age_intervals[idx] < lim_sup_intervals:
+    #             inter_set_age_intervals.add(inter_pair)
+                
+    #         if inter_init_ages[idx] >= lim_inf_init and inter_init_ages[idx] < lim_sup_init:
+    #             inter_set_init_ages.add(inter_pair)
+                
+    #     intersection = inter_set_age_intervals & inter_set_init_ages
+    #     for element in intersection:
+    #         if element not in inter_pairs_to_keep and count_added <:
+    #             count_added += 1
+    #             inter_pairs_to_keep.append(element)
+    #     counter_intervals = 0
+    #     counter_init = 0
+
+    inter_age_intervals_to_keep = np.abs([item[0][2]-item[1][2] for item in inter_pairs_to_keep])
+    inter_init_ages_to_keep = [min(item[0][2],item[1][2]) for item in inter_pairs_to_keep]
+
+    # plt.hist(inter_age_intervals_to_keep, range=(bin_edges_intra_age_intervals.min(), bin_edges_intra_age_intervals.max()), bins=n_bins, alpha=0.5, label='Inter Group')
+    # plt.hist(intra_age_intervals, bins=n_bins, alpha=0.5, label='Intra Group')
+    # plt.legend()
+    # plt.show()
+
+    # plt.hist(inter_init_ages_to_keep, range=(bin_edges_intra_init_ages.min(), bin_edges_intra_init_ages.max()), bins=n_bins, alpha=0.5, label='Inter Group')
+    # plt.hist(intra_init_ages, bins=n_bins, alpha=0.5, label='Intra Group')
+    # plt.legend()
+    # plt.show()
+        
+    return inter_pairs_to_keep
+
+    
 
 def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo):
     """
