@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_distribution_idx_per_subject(indices_by_subject):
+def plot_distribution_idx_per_subject(indices_by_subject, save_path):
     # Count the number of indices per subject
     num_indices_per_subject = [len(indices) for indices in indices_by_subject.values()]
 
@@ -12,9 +12,9 @@ def plot_distribution_idx_per_subject(indices_by_subject):
     plt.ylabel("Frequency")
 
     # Show the plot
-    plt.show()
+    plt.savefig(f'{save_path}/distribution_idx_per_subject.png')
 
-def plot_example_intra_inter_colormap(x_train, y_train):
+def plot_example_intra_inter_colormap(x_train, y_train, save_path):
     # Generate a colorbar to go from -1 to 1
     cmap = plt.cm.get_cmap('coolwarm')
     norm = plt.Normalize(-1, 1)
@@ -39,10 +39,10 @@ def plot_example_intra_inter_colormap(x_train, y_train):
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
     cbar = fig.colorbar(sm, cax=cbar_ax)
 
-    plt.show()
+    plt.savefig(f'{save_path}/example_intra_inter_coolwarm_cmap.png')
 
 
-def plot_example_intra_inter(x_train, y_train):
+def plot_example_intra_inter(x_train, y_train, save_path):
     fig, axes = plt.subplots(2, 7, figsize=(14, 4))
 
     for i in range(28, 42):
@@ -57,9 +57,9 @@ def plot_example_intra_inter(x_train, y_train):
             axes[row, col].set_title("0: inter")
         axes[row, col].axis('off')
 
-    plt.show()
+    plt.savefig(f'{save_path}/example_intra_inter_gray_cmap.png')
 
-def plot_log_jacobian_per_age_interval(df_279):
+def plot_log_jacobian_per_age_interval(df_279, save_path):
     # Filter data based on the 'group' column
     group_inter = df_279[df_279['group'] == 'inter']
     group_intra = df_279[df_279['group'] == 'intra']
@@ -73,7 +73,7 @@ def plot_log_jacobian_per_age_interval(df_279):
     plt.ylabel('avg_abs_log_jacobian')
     plt.legend()
     plt.grid(True)
-    plt.show()
+    plt.savefig(f'{save_path}/log_jacobian_per_age_interval.png')
 
 def visualize_model_performance(model, save_path):
     fig, ax = plt.subplots(1, 2, figsize=(12, 4))

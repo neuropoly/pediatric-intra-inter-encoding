@@ -6,6 +6,7 @@ from datetime import timedelta
 import pandas as pd
 import csv
 import random
+import shutil
 
 def subj_to_scan_id():
     p_file = "PatientDict.txt"
@@ -431,10 +432,10 @@ def read_tsv_file(file_path):
         header = file.readline()  # Skip the header line
         for line in file:
             participant_id, sub_id_bids, scan_id, session, age, sex, group = line.strip().split('\t')
-            data.append((participant_id, scan_id, float(age)))
+            data.append((participant_id, scan_id, float(age), int(sex)))
     return data
 
-def find_pairs(data, type):
+def find_pairs_per_age(data, type):
     """
     Find pairs of participants with age difference less than 0.5 years.
 
@@ -457,8 +458,8 @@ def find_pairs(data, type):
     pairs = []
     for i in range(len(data)):
         for j in range(i + 1, len(data)):
-            participant_id_1, scan_id_1, age_1 = data[i]
-            participant_id_2, scan_id_2, age_2 = data[j]
+            participant_id_1, scan_id_1, age_1, _ = data[i]
+            participant_id_2, scan_id_2, age_2, _ = data[j]
 
             if type == 'intra':
                 if participant_id_1 == participant_id_2:
@@ -468,6 +469,39 @@ def find_pairs(data, type):
                         pairs.append(((participant_id_2, scan_id_2, age_2), (participant_id_1, scan_id_1, age_1)))
             else:
                 if participant_id_1 != participant_id_2 and abs(age_1 - age_2) < 0.025:
+                    pairs.append(((participant_id_1, scan_id_1, age_1), (participant_id_2, scan_id_2, age_2)))
+    
+    return pairs
+
+def find_inter_pairs_per_sex(data, sex):
+    """
+    Find pairs of participants with age difference less than 0.5 years and with same sex pairs.
+
+    This function takes a list of tuples containing participant_id, scan_id, and age data.
+    It iterates through the data and finds all unique pairs of participants whose age difference is less than 0.5 years.
+
+    Parameters:
+        data (list): A list of tuples, where each tuple contains the participant_id (str), scan_id (str), and age (float) data.
+        sex (int)
+
+    Returns:
+        list: A list of tuples, where each tuple contains two tuples representing the pairs.
+              Each inner tuple contains the participant_id (str), scan_id (str), and age (float) of a participant.
+
+    Example:
+        >>> data = [('sub-001', 'PS14_001', 4.1389), ('sub-002', 'PS14_002', 3.789), ...]
+        >>> pairs = find_pairs(data)
+        >>> print(pairs)
+        [(('sub-001', 'PS14_001', 4.1389), ('sub-002', 'PS14_002', 3.789)), ...]
+    """
+    pairs = []
+    for i in range(len(data)):
+        for j in range(i + 1, len(data)):
+            participant_id_1, scan_id_1, age_1, sex_1 = data[i]
+            participant_id_2, scan_id_2, age_2, sex_2 = data[j]
+
+            if participant_id_1 != participant_id_2 and abs(age_1 - age_2) < 0.025 and sex_1 == sex_2:
+                if sex_1 == sex:
                     pairs.append(((participant_id_1, scan_id_1, age_1), (participant_id_2, scan_id_2, age_2)))
     
     return pairs
@@ -598,12 +632,79 @@ def find_pairs_with_matching_distribution(data, target_distribution):
     
     return pairs
 
+def separate_intra_by_sex(folders_path, data_path, folders_dest, type):
+    """
+    Separate intra-subject pairs by sex. 1 is for male and 0 for female.
+    type: ra or r
+    """
+    data = pd.read_csv(data_path, sep='\t')
+    for folder in os.listdir(folders_path):
+        if '.csv' not in folder:
+            mov, fix = find_scan_ids(folder)
+            row = data[data['scan_id'] == mov]
+
+            # Check if a row is found
+            if not row.empty:
+                # Extract the sex value from the found row
+                sex = row['sex'].iloc[0]
+            else:
+                print("Scan ID not found")
+
+            if sex == 1:
+                # Copy the logJacobian.nii.gz file in folder called intra_m_ra/r
+                experiment_name = 'intra_m_ra' if type == 'ra' else 'intra_m_r'
+                if not os.path.exists(f'{folders_dest}/{experiment_name}/{folder}/'):
+                    os.makedirs(f'{folders_dest}/{experiment_name}/{folder}/')
+                
+                shutil.copy(f'{folders_path}{folder}/logJacobian.nii.gz', f'{folders_dest}/{experiment_name}/{folder}/logJacobian.nii.gz')
+            else:
+                experiment_name = 'intra_f_ra' if type == 'ra' else 'intra_f_r'
+                if not os.path.exists(f'{folders_dest}/{experiment_name}/{folder}/'):
+                    os.makedirs(f'{folders_dest}/{experiment_name}/{folder}/')
+                shutil.copy(f'{folders_path}{folder}/logJacobian.nii.gz', f'{folders_dest}/{experiment_name}/{folder}/logJacobian.nii.gz')
+        else:
+            print('Not a folder, but a file')
+
+def intra_count_by_sex(folders_path, data_path):
+    data = pd.read_csv(data_path, sep='\t')
+    
+    current_participant_ids = []
+
+    # Iterate through each row in the sorted DataFrame
+    for folder in os.listdir(folders_path):
+        mov, fix = find_scan_ids(folder)
+        row = data[data['scan_id'] == mov]
+        # Get the current participant ID
+        participant_id = row['participant_id'].iloc[0]
+        
+        # If it's the first row or the participant ID changed, increment the counter
+        if participant_id not in current_participant_ids:
+            current_participant_ids.append(participant_id)
+        
+        # Store the current participant ID as the previous one
+        prev_participant_id = participant_id
+    print(f'There are {len(current_participant_ids)} subjects of the specified sex')
+    print(current_participant_ids)
+
 if __name__ == "__main__":
     # output_directory = "/home/andjela/Documents/intra-inter-ddfs/src/"
     # create_participant_file(output_directory)
 
     tsv_file_path = "participants.tsv"
     data = read_tsv_file(tsv_file_path)
+
+    # Separate intra-sub by sex
+    # folders_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_ra/intra/"
+    # folders_dest = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs"
+    # separate_intra_by_sex(folders_path, tsv_file_path, folders_dest, 'ra')
+
+    # folders_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_f_ra/"
+    # intra_count_by_sex(folders_path, tsv_file_path)
+
+    # Separate inter-sub by sex
+    sex = 1
+    pairs = find_inter_pairs_per_sex(data, sex)
+    print(f'There are {len(pairs)} pairs of sex {sex}')
 
     # # transfo ='rigid_inter'
     # # transfo = 'affine_inter'
@@ -615,11 +716,13 @@ if __name__ == "__main__":
 
     # img_dir = "/media/andjela/SeagatePor/PairReg/rigid/images/"
     # img_dir_out = '/home/andjela/Documents/intra-inter-ddfs/intra/'
-    type = 'intra'
-    pairs = find_pairs(data, type)
+
+    # # # # # Extract pairs # # # # #
+    # type = 'intra'
+    # pairs = find_pairs(data, type)
     # print(len(pairs))
 
-    # # Correction of intra-subject-reg
+    # # # # # Correction of intra-subject-reg # # # # #
     # run_intra_reg_per_pair(p= '10117', mov= 'PS15_070', fix= 'CL_Dev_015', img_dir = img_dir, img_dir_out = img_dir_out)
 
     # all_failed_pairs = [('10117', 'PS15_070', 'CL_Dev_012'), ('10117', 'PS15_070', 'CL_Dev_012'), ('10117', 'PS15_070', 'CL_Dev_010'), 
@@ -633,13 +736,13 @@ if __name__ == "__main__":
     # for pair in all_failed_pairs:
     #     run_intra_reg_per_pair(p= pair[0], mov= pair[1], fix= pair[2], img_dir = img_dir, img_dir_out = img_dir_out)
 
-    root_path = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_ra/intra/'
-    file_to_check = 'logJacobian.nii.gz'
-    folders_to_redo = find_folders_without_file(root_path, file_to_check)
-    pairs_to_redo = find_pairs_by_scan_ids(folders_to_redo, pairs)
-    filtered_pairs_to_redo = [item for item in pairs_to_redo if item[0][0] != '10136']
+    # root_path = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_ra/intra/'
+    # file_to_check = 'logJacobian.nii.gz'
+    # folders_to_redo = find_folders_without_file(root_path, file_to_check)
+    # pairs_to_redo = find_pairs_by_scan_ids(folders_to_redo, pairs)
+    # filtered_pairs_to_redo = [item for item in pairs_to_redo if item[0][0] != '10136']
 
-    # For rigid only
+    # # # # # For rigid only # # # # #
     # img_dir = '/media/andjela/SeagatePor/work_dir/reg_n4_wdir/'
     # img_dir_out = '/home/andjela/joplin-intra-inter/rigid_intra/'
     # img_dir_init_transfo = ''
@@ -647,7 +750,7 @@ if __name__ == "__main__":
     # for pair in filtered_pairs_to_redo:
     #     run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo)
 
-    # For rigid-affine
+    # # # # # For rigid-affine # # # # #
     #img_dir = '/media/andjela/SeagatePor/work_dir/reg_n4_wdir/'
     #img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/rigid_affine_corr/images/'
     #img_dir_init_transfo = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/rigid_intra/'
@@ -655,31 +758,31 @@ if __name__ == "__main__":
     #for pair in pairs_to_redo:
     #    run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo)
 
-    # For SyN
-    img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/work_dir2/cbf2mni_wdir/'
-    img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/rigid_affine_corr/images/'
-    img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_ra/intra'
+    # # # # # For SyN # # # # #
+    # img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/work_dir2/cbf2mni_wdir/'
+    # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/rigid_affine_corr/images/'
+    # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_ra/intra'
 
-    csv_output_path = f'{img_dir_out}timing_results.csv'
-    if not os.path.exists(csv_output_path):
-        with open(csv_output_path, 'w', newline='') as csvfile:
-            csv_writer = csv.writer(csvfile)
-            csv_writer.writerow(['Pair (mov_fix)', 'Time (seconds)', 'Age interval (fix-mov)'])
+    # csv_output_path = f'{img_dir_out}timing_results.csv'
+    # if not os.path.exists(csv_output_path):
+    #     with open(csv_output_path, 'w', newline='') as csvfile:
+    #         csv_writer = csv.writer(csvfile)
+    #         csv_writer.writerow(['Pair (mov_fix)', 'Time (seconds)', 'Age interval (fix-mov)'])
 
-    with open(csv_output_path, 'a', newline='') as csvfile:
-        csv_writer = csv.writer(csvfile)
-        for pair in pairs_to_redo:
-            start = timer()
-            interval, mov, fix = run_ants_intra_syn_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
-            end = timer()
-            time_taken = timedelta(seconds=end-start)
-            csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
+    # with open(csv_output_path, 'a', newline='') as csvfile:
+    #     csv_writer = csv.writer(csvfile)
+    #     for pair in pairs_to_redo:
+    #         start = timer()
+    #         interval, mov, fix = run_ants_intra_syn_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
+    #         end = timer()
+    #         time_taken = timedelta(seconds=end-start)
+    #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
 
     
         
         
 
-    # # For inter_reg
+    # # # # # For inter_reg # # # # #
     # img_dir_fix = '/media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/'
     # img_dir_mov = '/media/andjela/SeagatePor/PairReg/rigid_inter/images/'
     # img_dir_out = '/home/andjela/Documents/intra-inter-ddfs/inter/'
@@ -687,7 +790,7 @@ if __name__ == "__main__":
     # pairs = find_pairs(data, type)
     # print(len(pairs))
 
-    # # For inter_affine_reg
+    # # # # # For inter_affine_reg # # # # #
     # img_dir_fix = '/media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/'
     
     # img_dir_mov = '/media/andjela/SeagatePor/PairReg/rigid_affine_inter/images/'

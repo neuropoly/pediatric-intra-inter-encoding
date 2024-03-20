@@ -1,5 +1,5 @@
 from preprocessing import read_tsv_and_create_dict, read_tsv_and_create_dataframe, read_paths, extract_all_participant_ids, select_random_state, custom_split_indices
-from train-and-test import .
+from train_and_test import .
 
 
 def main(file_path, path_inter, path_intra, experiment_name):
