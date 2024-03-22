@@ -6,6 +6,7 @@ from datetime import timedelta
 import pandas as pd
 import csv
 import numpy as np
+from matplotlib import pyplot as plt
 import random
 import shutil
 
@@ -56,11 +57,11 @@ def find_intra_pairs(data):
     pairs = []
     for i in range(len(data)):
         for j in range(i + 1, len(data)):
-            participant_id_1, scan_id_1, age_1 = data[i]
-            participant_id_2, scan_id_2, age_2 = data[j]
+            participant_id_1, scan_id_1, age_1, sex_1 = data[i]
+            participant_id_2, scan_id_2, age_2, sex_2 = data[j]
 
             if participant_id_1 == participant_id_2:
-                pairs.append(((participant_id_1, scan_id_1, age_1), (participant_id_2, scan_id_2, age_2)))
+                pairs.append(((participant_id_1, scan_id_1, age_1, sex_1), (participant_id_2, scan_id_2, age_2, sex_2)))
 
     return pairs
 
@@ -68,12 +69,12 @@ def find_inter_pairs(data):
     pairs = []
     for i in range(len(data)):
         for j in range(i + 1, len(data)):
-            participant_id_1, scan_id_1, age_1 = data[i]
-            participant_id_2, scan_id_2, age_2 = data[j]
+            participant_id_1, scan_id_1, age_1, sex_1 = data[i]
+            participant_id_2, scan_id_2, age_2, sex_2 = data[j]
 
             
             if participant_id_1 != participant_id_2:
-                pairs.append(((participant_id_1, scan_id_1, age_1), (participant_id_2, scan_id_2, age_2)))
+                pairs.append(((participant_id_1, scan_id_1, age_1, sex_1), (participant_id_2, scan_id_2, age_2, sex_2)))
     
     return pairs
 
@@ -91,71 +92,79 @@ def find_closest_values_with_indices(target_value, array):
     
     return closest_values, closest_indices[0]
 
-def find_inter_pairs_with_matching_distribution_init(data, n_bins):
+def find_inter_pairs_with_matching_distribution_init(data, n_bins, sex=None, same_sex=False):
     # Calculate histogram distribution of intra_array
     intra_pairs_info = find_intra_pairs(data)
+    
     intra_age_intervals = np.abs([item[0][2]-item[1][2] for item in intra_pairs_info])
     hist_distribution_intra_age_intervals, bin_edges_intra_age_intervals = np.histogram(intra_age_intervals, bins=n_bins) # Mean: 1.152, std: 0.684
 
     intra_init_ages = [min(item[0][2],item[1][2]) for item in intra_pairs_info]
     hist_distribution_intra_init_ages, bin_edges_intra_init_ages = np.histogram(intra_init_ages, bins=n_bins) # Mean: 1.152, std: 0.684
 
+    if same_sex:
+        intra_sexes = [item[0][3] for item in intra_pairs_info]
 
+        count_0 = intra_sexes.count(0)
+        count_1 = intra_sexes.count(1)
+
+        print("Number of 0's:", count_0)
+        print("Number of 1's:", count_1)
+    
     # Known values for the new group
     inter_pairs_info = find_inter_pairs(data)
+    
     inter_age_intervals = np.abs([item[0][2]-item[1][2] for item in inter_pairs_info])
 
     inter_init_ages = [min(item[0][2],item[1][2]) for item in inter_pairs_info]
-
     
     inter_pairs_to_keep = []
-    # hist_distribution_inter_age_intervals = np.zeros(len(hist_distribution_intra_age_intervals))
-    # hist_distribution_inter_init_ages = np.zeros(len(hist_distribution_intra_init_ages))
-    # counter_intervals = 0
-    # counter_init = 0
-    for idx, intra_pair in enumerate(intra_pairs_info):
-        limits_intervals, idx_bin_intervals  = find_closest_values_with_indices(intra_age_intervals[idx], bin_edges_intra_age_intervals)
-        limits_init, idx_bin_init = find_closest_values_with_indices(intra_init_ages[idx], bin_edges_intra_init_ages)
+    
+    for idx_intra, intra_pair in enumerate(intra_pairs_info):
+        if sex is not None:
+            if sex != intra_pair[0][3]:
+                continue
+        
+        limits_intervals, idx_bin_intervals  = find_closest_values_with_indices(intra_age_intervals[idx_intra], bin_edges_intra_age_intervals)
+        limits_init, idx_bin_init = find_closest_values_with_indices(intra_init_ages[idx_intra], bin_edges_intra_init_ages)
+        
+        # Inter pairs where the age interval or initial age are within the same bin as intra pair
         inter_set_age_intervals = set()
         inter_set_init_ages = set()
-        # target_bin_count_intervals = hist_distribution_intra_age_intervals[idx_bin_intervals]
-        # target_bin_count_init = hist_distribution_intra_init_ages[idx_bin_init]
-        for idx, inter_pair in enumerate(inter_pairs_info):
-            if inter_age_intervals[idx] >= limits_intervals[0] and inter_age_intervals[idx] < limits_intervals[1]:
-                inter_set_age_intervals.add(inter_pair)
-            if inter_init_ages[idx] >= limits_init[0] and inter_init_ages[idx] < limits_init[1]:
-                inter_set_init_ages.add(inter_pair)
+        if same_sex:
+            inter_set_sex = set()
         
-        # actual_bin_count_intervals = hist_distribution_inter_age_intervals[idx_bin_intervals]
-        # actual_bin_count_init = hist_distribution_inter_init_ages[idx_bin_init]
-        intersection = inter_set_age_intervals & inter_set_init_ages
-        for element in intersection:
+        for idx_inter, inter_pair in enumerate(inter_pairs_info):
+            if inter_age_intervals[idx_inter] >= limits_intervals[0] and inter_age_intervals[idx_inter] < limits_intervals[1]:
+                inter_set_age_intervals.add(inter_pair)
+            if inter_init_ages[idx_inter] >= limits_init[0] and inter_init_ages[idx_inter] < limits_init[1]:
+                inter_set_init_ages.add(inter_pair)
+            if same_sex:
+                if inter_pair[0][3] == sex and inter_pair[1][3] == sex: 
+                    inter_set_sex.add(inter_pair)
+        if same_sex:
+            intersection = inter_set_age_intervals & inter_set_init_ages & inter_set_sex
+            # Sort the intersection by age interval in reverse to keep more inter-pairs not within intra-pairs
+            sorted_intersection = sorted(intersection, reverse=True)
+            for element in sorted_intersection:
 
-            if element not in inter_pairs_to_keep:
-                inter_pairs_to_keep.append(element)
+                if element not in inter_pairs_to_keep:
+                    inter_pairs_to_keep.append(element)
 
-                break
+                    break
+        else:
+            intersection = inter_set_age_intervals & inter_set_init_ages
+            # Sort the intersection by age interval in reverse to keep more inter-pairs not within intra-pairs
+            sorted_intersection = sorted(intersection, reverse=True)
+            for element in sorted_intersection:
 
+                if element not in inter_pairs_to_keep:
+                    inter_pairs_to_keep.append(element)
 
-    # for lim_inf_intervals, lim_sup_intervals, bin_count_intervals, lim_inf_init, lim_sup_init, bin_count_init in zip(bin_edges_intra_age_intervals, bin_edges_intra_age_intervals[1:], hist_distribution_intra_age_intervals, bin_edges_intra_init_ages, bin_edges_intra_init_ages[1:], hist_distribution_intra_init_ages):
-    #     count_added = 0
-    #     for idx, inter_pair in enumerate(inter_pairs_info):
-    #         if inter_age_intervals[idx] >= lim_inf_intervals and inter_age_intervals[idx] < lim_sup_intervals:
-    #             inter_set_age_intervals.add(inter_pair)
-                
-    #         if inter_init_ages[idx] >= lim_inf_init and inter_init_ages[idx] < lim_sup_init:
-    #             inter_set_init_ages.add(inter_pair)
-                
-    #     intersection = inter_set_age_intervals & inter_set_init_ages
-    #     for element in intersection:
-    #         if element not in inter_pairs_to_keep and count_added <:
-    #             count_added += 1
-    #             inter_pairs_to_keep.append(element)
-    #     counter_intervals = 0
-    #     counter_init = 0
+                    break
 
     inter_age_intervals_to_keep = np.abs([item[0][2]-item[1][2] for item in inter_pairs_to_keep])
-    inter_init_ages_to_keep = [min(item[0][2],item[1][2]) for item in inter_pairs_to_keep]
+    inter_init_ages_to_keep = [min(item[0][2], item[1][2]) for item in inter_pairs_to_keep]
 
     # plt.hist(inter_age_intervals_to_keep, range=(bin_edges_intra_age_intervals.min(), bin_edges_intra_age_intervals.max()), bins=n_bins, alpha=0.5, label='Inter Group')
     # plt.hist(intra_age_intervals, bins=n_bins, alpha=0.5, label='Intra Group')
@@ -806,11 +815,28 @@ def intra_count_by_sex(folders_path, data_path):
     print(f'There are {len(current_participant_ids)} subjects of the specified sex')
     print(current_participant_ids)
 
+def find_count_inter_pairs_per_sex(pairs, sex):
+
+
+    same_sex_pairs = []
+    count = 0
+    for pair in pairs:
+        participant_id_1, scan_id_1, age_1, sex_1 = pair[0]
+        participant_id_2, scan_id_2, age_2, sex_2 = pair[1]
+
+        if sex_1 == sex and sex_2 == sex:
+            count += 1
+            same_sex_pairs.append(pair)
+
+    
+    print(count)
+    return same_sex_pairs
+
 if __name__ == "__main__":
     # output_directory = "/home/andjela/Documents/intra-inter-ddfs/src/"
     # create_participant_file(output_directory)
 
-    tsv_file_path = "participants.tsv"
+    tsv_file_path = "all-participants.tsv"
     data = read_tsv_file(tsv_file_path)
 
     # Separate intra-sub by sex
@@ -822,9 +848,21 @@ if __name__ == "__main__":
     # intra_count_by_sex(folders_path, tsv_file_path)
 
     # Separate inter-sub by sex
-    sex = 1
-    pairs = find_inter_pairs_per_sex(data, sex)
-    print(f'There are {len(pairs)} pairs of sex {sex}')
+    sexes = [0, 1]
+    # for sex in sexes:
+    #     pairs = find_inter_pairs_per_sex(data, sex)
+    #     print(f'There are {len(pairs)} pairs of sex {sex}')
+
+    # Separate inter-sub by age interval and initial age
+    # selected_inter_pairs = find_inter_pairs_with_matching_distribution_init(data, n_bins=25)
+    # print(f'There are {len(selected_inter_pairs)} pairs with matching distribution')
+    # print(selected_inter_pairs[:5])
+    # And again by sex
+    for sex in sexes:
+        selected_sex_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, sex, same_sex=True)
+    #     pairs_per_sex = find_count_inter_pairs_per_sex(selected_inter_pairs, sex)
+        print(f'There are {len(selected_sex_pairs)} pairs of sex {sex}')
+
 
     # # transfo ='rigid_inter'
     # # transfo = 'affine_inter'
