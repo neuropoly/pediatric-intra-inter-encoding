@@ -218,8 +218,9 @@ def find_inter_pairs_with_matching_distribution_init(data, n_bins, sex=None, sam
     inter_pairs_to_keep = []
     
     for idx_intra, intra_pair in enumerate(intra_pairs_info):
+        sex_intra = intra_pair[0][3]
         if sex is not None:
-            if sex != intra_pair[0][3]:
+            if sex != sex_intra:
                 continue
         
         limits_intervals, idx_bin_intervals  = find_closest_values_with_indices(intra_age_intervals[idx_intra], bin_edges_intra_age_intervals)
@@ -237,7 +238,7 @@ def find_inter_pairs_with_matching_distribution_init(data, n_bins, sex=None, sam
             if inter_init_ages[idx_inter] >= limits_init[0] and inter_init_ages[idx_inter] < limits_init[1]:
                 inter_set_init_ages.add(inter_pair)
             if same_sex:
-                if inter_pair[0][3] == sex and inter_pair[1][3] == sex: 
+                if inter_pair[0][3] == sex_intra and inter_pair[1][3] == sex_intra: 
                     inter_set_sex.add(inter_pair)
         if same_sex:
             intersection = inter_set_age_intervals & inter_set_init_ages & inter_set_sex
@@ -306,8 +307,8 @@ def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_tran
     """
 
     start = timer()
-    p_mov, mov, age_mov = pair[0]
-    p_fix, fix, age_fix = pair[1]
+    p_mov, mov, age_mov, _ = pair[0]
+    p_fix, fix, age_fix, _ = pair[1]
 
     # Grab equivalent sub_id and session
     
@@ -322,6 +323,8 @@ def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_tran
         mov, fix = fix, mov
         age_mov, age_fix = age_fix, age_mov
         p_mov, p_fix = p_fix, p_mov
+        sub_id_mov, sub_id_fix = sub_id_fix, sub_id_mov
+        session_mov, session_fix = session_fix, session_mov
 
     interval = age_fix-age_mov
     
@@ -421,7 +424,7 @@ def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_tran
     else:
         
         # Rigid Transfo
-        if os.path.exists(f'{img_dir}{p_fix}/{fix}/wf/n4/{fix}_corrected.nii.gz'):
+        if os.path.exists(f'{img_dir}{p_fix}/{fix}/wf/n4/{fix}_corrected.nii.gz') and os.path.exists(f'{img_dir}{p_mov}/{mov}/wf/n4/{mov}_corrected.nii.gz'):
             os.system(f"antsRegistration --dimensionality 3 --float 0 " \
                 f"--output [ {img_dir_out}{mov}_{fix}/mov2fix_, {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz, {img_dir_out}{mov}_{fix}/fix2mov_warped_image.nii.gz ] " \
                 f"--interpolation Linear " \
@@ -450,7 +453,7 @@ def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_tran
             print('TIME TAKEN:', timedelta(seconds=end-start))
 
             return interval, mov, fix
-        else:
+        elif os.path.exists(f'{img_dir}{p_fix}/{fix}/wf/n4/{sub_id_fix}-{session_fix}-T1w_corrected.nii.gz') and os.path.exists(f'{img_dir}{p_mov}/{mov}/wf/n4/{sub_id_mov}-{session_mov}-T1w_corrected.nii.gz'):
             os.system(f"antsRegistration --dimensionality 3 --float 0 " \
                 f"--output [ {img_dir_out}{mov}_{fix}/mov2fix_, {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz, {img_dir_out}{mov}_{fix}/fix2mov_warped_image.nii.gz ] " \
                 f"--interpolation Linear " \
@@ -475,6 +478,65 @@ def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_tran
             os.system(f'fslmaths {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz -mul {img_dir_out}{mov}_{fix}/mask_trans.nii {img_dir_out}{mov}_{fix}/{mov}_dtype.nii.gz -odt float')
             #brain extraction for fix image which stays fix
             os.system(f'fslmaths {img_dir}{p_fix}/{fix}/wf/n4/{sub_id_fix}-{session_fix}-T1w_corrected -mul {os.path.dirname(os.path.dirname(img_dir))}2/cbf2mni_wdir/{p_fix}/{fix}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz {img_dir_out}{mov}_{fix}/{fix}_dtype.nii.gz -odt float')
+            end = timer()
+            print('TIME TAKEN:', timedelta(seconds=end-start))
+
+            return interval, mov, fix
+        elif os.path.exists(f'{img_dir}{p_fix}/{fix}/wf/n4/{sub_id_fix}-{session_fix}-T1w_corrected.nii.gz') and os.path.exists(f'{img_dir}{p_mov}/{mov}/wf/n4/{mov}_corrected.nii.gz'):
+            os.system(f"antsRegistration --dimensionality 3 --float 0 " \
+                f"--output [ {img_dir_out}{mov}_{fix}/mov2fix_, {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz, {img_dir_out}{mov}_{fix}/fix2mov_warped_image.nii.gz ] " \
+                f"--interpolation Linear " \
+                f"--winsorize-image-intensities [0.005,0.995] " \
+                f"--use-histogram-matching 1 " \
+                f"--write-composite-transform 1 " \
+                f"--transform Rigid[0.1] " \
+                f"--metric Mattes[ {img_dir}{p_fix}/{fix}/wf/n4/{sub_id_fix}-{session_fix}-T1w_corrected.nii.gz, {img_dir}{p_mov}/{mov}/wf/n4/{mov}_corrected.nii.gz, 1, 32, Regular, 0.3 ] " \
+                f"--convergence [500x250x100,1e-6,10] " \
+                f"--shrink-factors 4x2x1 " \
+                f"--smoothing-sigmas 2x1x0vox " \
+                f"--verbose 1"
+                )
+            # warp subject calculated mov mask to fix
+            os.system(f"antsApplyTransforms --default-value 0 --float 0 " \
+                f"--input {os.path.dirname(os.path.dirname(img_dir))}2/cbf2mni_wdir/{p_mov}/{mov}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz " \
+                f"--input-image-type 0 --interpolation NearestNeighbor --output {img_dir_out}{mov}_{fix}/mask_trans.nii " \
+                f"--reference-image {img_dir}{p_fix}/{fix}/wf/n4/{sub_id_fix}-{session_fix}-T1w_corrected.nii.gz " \
+                f"--transform {img_dir_out}{mov}_{fix}/mov2fix_Composite.h5")
+
+            #brain extraction for mov image which becomes mov2fix_warped
+            os.system(f'fslmaths {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz -mul {img_dir_out}{mov}_{fix}/mask_trans.nii {img_dir_out}{mov}_{fix}/{mov}_dtype.nii.gz -odt float')
+            #brain extraction for fix image which stays fix
+            os.system(f'fslmaths {img_dir}{p_fix}/{fix}/wf/n4/{sub_id_fix}-{session_fix}-T1w_corrected -mul {os.path.dirname(os.path.dirname(img_dir))}2/cbf2mni_wdir/{p_fix}/{fix}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz {img_dir_out}{mov}_{fix}/{fix}_dtype.nii.gz -odt float')
+            end = timer()
+            print('TIME TAKEN:', timedelta(seconds=end-start))
+
+            return interval, mov, fix
+        else:
+            #case where fix_corrected and mov is in the sub-session format
+            os.system(f"antsRegistration --dimensionality 3 --float 0 " \
+                f"--output [ {img_dir_out}{mov}_{fix}/mov2fix_, {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz, {img_dir_out}{mov}_{fix}/fix2mov_warped_image.nii.gz ] " \
+                f"--interpolation Linear " \
+                f"--winsorize-image-intensities [0.005,0.995] " \
+                f"--use-histogram-matching 1 " \
+                f"--write-composite-transform 1 " \
+                f"--transform Rigid[0.1] " \
+                f"--metric Mattes[ {img_dir}{p_fix}/{fix}/wf/n4/{fix}_corrected.nii.gz, {img_dir}{p_mov}/{mov}/wf/n4/{sub_id_mov}-{session_mov}-T1w_corrected.nii.gz, 1, 32, Regular, 0.3 ] " \
+                f"--convergence [500x250x100,1e-6,10] " \
+                f"--shrink-factors 4x2x1 " \
+                f"--smoothing-sigmas 2x1x0vox " \
+                f"--verbose 1"
+                )
+            # warp subject calculated mov mask to fix
+            os.system(f"antsApplyTransforms --default-value 0 --float 0 " \
+                f"--input {os.path.dirname(os.path.dirname(img_dir))}2/cbf2mni_wdir/{p_mov}/{mov}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz " \
+                f"--input-image-type 0 --interpolation NearestNeighbor --output {img_dir_out}{mov}_{fix}/mask_trans.nii " \
+                f"--reference-image {img_dir}{p_fix}/{fix}/wf/n4/{fix}_corrected.nii.gz " \
+                f"--transform {img_dir_out}{mov}_{fix}/mov2fix_Composite.h5")
+            
+            #brain extraction for mov image which becomes mov2fix_warped
+            os.system(f'fslmaths {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz -mul {img_dir_out}{mov}_{fix}/mask_trans.nii {img_dir_out}{mov}_{fix}/{mov}_dtype.nii.gz -odt float')
+            #brain extraction for fix image which stays fix
+            os.system(f'fslmaths {img_dir}{p_fix}/{fix}/wf/n4/{fix}_corrected.nii.gz -mul {os.path.dirname(os.path.dirname(img_dir))}2/cbf2mni_wdir/{p_fix}/{fix}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz {img_dir_out}{mov}_{fix}/{fix}_dtype.nii.gz -odt float')
             end = timer()
             print('TIME TAKEN:', timedelta(seconds=end-start))
 
@@ -577,8 +639,8 @@ def run_ants_intra_syn_reg(pair, img_dir_fix, img_dir_mov, img_dir_out):
 
 def run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out):
     start = timer()
-    p_mov, mov, age_mov = pair[0]
-    p_fix, fix, age_fix = pair[1]
+    p_mov, mov, age_mov, _ = pair[0]
+    p_fix, fix, age_fix, _ = pair[1]
 
     # Ensure mov2fix is from younger subject to older
     if age_mov > age_fix:
@@ -590,15 +652,16 @@ def run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out):
     out_path = f"{img_dir_out}{mov}_{fix}/"
     if not os.path.exists(out_path):
         os.makedirs(out_path)
-    # os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{p_fix}/{fix}/wf/brainextraction/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/{mov}_dtype.nii.gz, 1, 4] " \
-    #     f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
-    #     f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
-    #     )
-    # For rigid-affine-inter
-    os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{p_fix}/{fix}/wf/brainextraction/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/mov2fix_warped_image.nii.gz, 1, 4] " \
+    # For rigid-inter
+    os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{mov}_{fix}/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/{mov}_dtype.nii.gz, 1, 4] " \
         f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
         f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
         )
+    # For rigid-affine-inter
+    # os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{p_fix}/{fix}/wf/brainextraction/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/mov2fix_warped_image.nii.gz, 1, 4] " \
+    #     f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
+    #     f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
+    #     )
     os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixed0Warp.nii.gz {out_path}jacobian.nii.gz 0 1")
     os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixed0Warp.nii.gz {out_path}logJacobian.nii.gz 1 1")
 
@@ -782,9 +845,14 @@ def find_scan_ids(name):
             
             return(mov, fix)
 
-    elif len(idx) == 4:
+    elif len(idx) == 4 and '-' not in idx[3]:
         mov = f'{idx[0]}_{idx[1]}'
         fix = f'{idx[2]}_{idx[3]}'
+        return(mov, fix)
+
+    elif len(idx) == 4 and '-' in idx[3]:
+        mov = f'{idx[0]}_{idx[1]}_{idx[2]}'
+        fix = f'{idx[3]}'
         return(mov, fix)
 
     elif len(idx) == 3 and '-' not in idx[2]:
@@ -796,7 +864,12 @@ def find_scan_ids(name):
         mov = f'{idx[0]}_{idx[1]}'
         fix = f'{idx[2]}'
         return(mov, fix)
-
+    
+    elif len(idx) == 2 and '-' in idx[1]:
+        mov = f'{idx[0]}'
+        fix = f'{idx[1]}'
+        return(mov, fix)
+    
     else:
         print('Not a corresponding folder name', name)
 
@@ -825,7 +898,7 @@ def find_pairs_by_scan_ids(scan_ids, pairs):
     result_pairs = []
     for scan_id_1, scan_id_2 in scan_ids:
         for pair in pairs:
-            if scan_id_1 in pair[0] and scan_id_2 in pair[1]:
+            if (scan_id_1 in pair[0] and scan_id_2 in pair[1]) or (scan_id_1 in pair[1] and scan_id_2 in pair[0]):
                 result_pairs.append(pair)
     return result_pairs
 
@@ -926,6 +999,23 @@ def find_count_inter_pairs_per_sex(pairs, sex):
     print(count)
     return same_sex_pairs
 
+def find_failed_rigid_pairs(csv_file):
+
+    # Read the CSV file and filter pairs based on time in seconds
+    pairs_less_than_15s = []
+    with open(csv_file, newline='') as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip header
+        for i, row in enumerate(reader):
+            if i >= 432:
+                break
+            pair, time_seconds, _ = row
+            time_seconds_float = float(time_seconds.split(':')[1]) * 60 + float(time_seconds.split(':')[2])
+            if time_seconds_float < 15:
+                pairs_less_than_15s.append(pair)
+    scan_id_pairs = [(find_scan_ids(s)) for s in pairs_less_than_15s]
+    return scan_id_pairs
+
 if __name__ == "__main__":
     # output_directory = "/home/andjela/Documents/intra-inter-ddfs/src/"
     # create_participant_file(output_directory)
@@ -1013,6 +1103,78 @@ if __name__ == "__main__":
     #for pair in pairs_to_redo:
     #    run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo)
 
+    # # # # # For inter_reg # # # # #
+    # img_dir_fix = '/media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/'
+    # img_dir_mov = '/media/andjela/SeagatePor/PairReg/rigid_inter/images/'
+    # img_dir_out = '/home/andjela/Documents/intra-inter-ddfs/inter/'
+    # type = 'inter'
+    # pairs = find_pairs(data, type)
+    # print(len(pairs))
+
+    # # Inter reg on pairs with matching init age, age interval and sex (ias) # #
+    img_dir = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/work_dir/reg_n4_wdir/'
+    img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
+    img_dir_init_transfo = ''
+    transfo = 'rigid'
+
+    selected_ias_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=True)
+
+    scan_to_sub = scan_id_to_sub_id(tsv_file_path)
+    scan_to_session = scan_id_to_session(tsv_file_path)
+    
+    # # # # TESTING A PAIR
+    # tryout_pair = selected_ias_pairs[0]
+    # run_ants_registration(tryout_pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+
+    # # # SAVING RESULTS
+    # csv_output_path = f'{img_dir_out}timing_results.csv'
+    # if not os.path.exists(csv_output_path):
+    #     with open(csv_output_path, 'w', newline='') as csvfile:
+    #         csv_writer = csv.writer(csvfile)
+    #         csv_writer.writerow(['Pair (mov_fix)', 'Time (seconds)', 'Age interval (fix-mov)'])
+
+    # with open(csv_output_path, 'a', newline='') as csvfile:
+    #     csv_writer = csv.writer(csvfile)
+    #     for pair in selected_ias_pairs:
+    #         start = timer()
+    #         interval, mov, fix = run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+    #         end = timer()
+    #         time_taken = timedelta(seconds=end-start)
+    #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
+
+    csv_file = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/timing_results.csv'
+    # csv_file = 'C:\\Users\\andje\\Downloads\\timing_results_inter_ias.csv'
+    failed_inter_rigid_pairs = find_failed_rigid_pairs(csv_file)
+    
+    
+    inter_pairs_to_redo = find_pairs_by_scan_ids(failed_inter_rigid_pairs, selected_ias_pairs)
+    
+    # tryout_pair = inter_pairs_to_redo[0]
+    for pair in inter_pairs_to_redo:
+        run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+
+
+    # # Inter reg on pairs with matching init age, age interval (ia) # #
+    # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
+
+    # # selected_ia_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=False)
+
+    # # # SAVING RESULTS
+    # csv_output_path = f'{img_dir_out}timing_results.csv'
+    # if not os.path.exists(csv_output_path):
+    #     with open(csv_output_path, 'w', newline='') as csvfile:
+    #         csv_writer = csv.writer(csvfile)
+    #         csv_writer.writerow(['Pair (mov_fix)', 'Time (seconds)', 'Age interval (fix-mov)'])
+
+    # with open(csv_output_path, 'a', newline='') as csvfile:
+    #     csv_writer = csv.writer(csvfile)
+    #     for pair in selected_ia_pairs:
+    #         start = timer()
+    #         interval, mov, fix = run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+    #         end = timer()
+    #         time_taken = timedelta(seconds=end-start)
+    #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
+
     # # # # # For SyN # # # # #
     # img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/work_dir2/cbf2mni_wdir/'
     # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/rigid_affine_corr/images/'
@@ -1033,34 +1195,15 @@ if __name__ == "__main__":
     #         time_taken = timedelta(seconds=end-start)
     #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
 
-    
-        
-        
+    # # # # # For inter_ias_r # # # # #
+    # img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
+    # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
+    # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
 
-    # # # # # For inter_reg # # # # #
-    # img_dir_fix = '/media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/'
-    # img_dir_mov = '/media/andjela/SeagatePor/PairReg/rigid_inter/images/'
-    # img_dir_out = '/home/andjela/Documents/intra-inter-ddfs/inter/'
-    # type = 'inter'
-    # pairs = find_pairs(data, type)
-    # print(len(pairs))
+    # # # TRYOUT A PAIR # #
+    # # tryout_pair = selected_ias_pairs[0]
+    # # run_ants_inter_reg(tryout_pair, img_dir_fix, img_dir_mov, img_dir_out)
 
-    # # Inter reg on pairs with matching init age, age interval and sex (ias) # #
-    img_dir = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/work_dir/reg_n4_wdir/'
-    img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
-    img_dir_init_transfo = ''
-    transfo = 'rigid'
-
-    selected_ias_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=True)
-
-    scan_to_sub = scan_id_to_sub_id(tsv_file_path)
-    scan_to_session = scan_id_to_session(tsv_file_path)
-
-    # # # TESTING A PAIR
-    tryout_pair = selected_ias_pairs[0]
-    run_ants_registration(tryout_pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
-
-    # # # SAVING RESULTS
     # csv_output_path = f'{img_dir_out}timing_results.csv'
     # if not os.path.exists(csv_output_path):
     #     with open(csv_output_path, 'w', newline='') as csvfile:
@@ -1071,7 +1214,27 @@ if __name__ == "__main__":
     #     csv_writer = csv.writer(csvfile)
     #     for pair in selected_ias_pairs:
     #         start = timer()
-    #         interval, mov, fix = run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+    #         interval, mov, fix = run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
+    #         end = timer()
+    #         time_taken = timedelta(seconds=end-start)
+    #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
+
+    # # # # # For inter_ias_r # # # # #
+    # img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
+    # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
+    # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
+
+    # csv_output_path = f'{img_dir_out}timing_results.csv'
+    # if not os.path.exists(csv_output_path):
+    #     with open(csv_output_path, 'w', newline='') as csvfile:
+    #         csv_writer = csv.writer(csvfile)
+    #         csv_writer.writerow(['Pair (mov_fix)', 'Time (seconds)', 'Age interval (fix-mov)'])
+
+    # with open(csv_output_path, 'a', newline='') as csvfile:
+    #     csv_writer = csv.writer(csvfile)
+    #     for pair in selected_ia_pairs:
+    #         start = timer()
+    #         interval, mov, fix = run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
     #         end = timer()
     #         time_taken = timedelta(seconds=end-start)
     #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
