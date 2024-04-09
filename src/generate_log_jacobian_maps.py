@@ -3,12 +3,14 @@ import os
 from collections import defaultdict
 from timeit import default_timer as timer
 from datetime import timedelta
+from datetime import datetime
 import pandas as pd
 import csv
 import numpy as np
 # from matplotlib import pyplot as plt
 import random
 import shutil
+import nibabel as nib
 
 def subj_to_scan_id(tsv_file_path):
     #Read the all-participants.tsv file into a DataFrame
@@ -64,6 +66,12 @@ def scan_id_to_session(tsv_file_path):
     # print(scan_to_session)
     return scan_to_session
 
+def find_participant_id(scan_id, participant_scan_ids):
+    for participant_id, scan_ids in participant_scan_ids.items():
+        if scan_id in scan_ids:
+            return participant_id
+    return None
+
 def extract_non_longitudinal_scan_ids(tsv_file_path):
 
     # Read the all-participants.tsv file into a DataFrame
@@ -87,6 +95,15 @@ def skull_strip_non_longitudinal(tsv_file_path):
 
     scan_to_session = scan_id_to_session(tsv_file_path)
     scan_to_sub = scan_id_to_sub_id(tsv_file_path)
+
+    scan_ids_intra_to_do = ["PS16_002", "PS17_024", "PS16_054", "PS17_007", "PS0322-10-2", "PS1477-10-1", "PS16_006"]
+
+    for scan_id in scan_ids_intra_to_do:
+        p = find_participant_id(scan_id, p_dict)
+        sub_id = scan_to_sub[scan_id][0]
+        session = scan_to_session[scan_id][0]
+        # os.system(f"python reg_t12mni_N4corr.py {p} {scan_id} {sub_id} {session}")
+        os.system(f"python cbf2mni.py {p} {scan_id} {sub_id} {session}")
     
     # Test with one of the 32 subjects
     # scan_id = 'PS14_006'
@@ -109,19 +126,19 @@ def skull_strip_non_longitudinal(tsv_file_path):
     #                 # os.system(f"python cbf2mni.py {p} {scan_id} {sub_id} {session}")
     #     else:
     #         print('Skipping:', p)
-    not_wanted_p = [10001]
-    for p, scan_ids in p_dict.items():
-        if not p in not_wanted_p:
-            for scan_id in scan_ids:
-                if scan_id in non_longitudinal_scan_ids:
+    # not_wanted_p = [10001]
+    # for p, scan_ids in p_dict.items():
+    #     if not p in not_wanted_p:
+    #         for scan_id in scan_ids:
+    #             if scan_id in non_longitudinal_scan_ids:
                     
-                    sub_id = scan_to_sub[scan_id][0]
-                    session = scan_to_session[scan_id][0]
-                    # os.system(f"python reg_t12mni_N4corr.py {p} {scan_id} {sub_id} {session}")
-                    os.system(f"python cbf2mni.py {p} {scan_id} {sub_id} {session}")
+    #                 sub_id = scan_to_sub[scan_id][0]
+    #                 session = scan_to_session[scan_id][0]
+    #                 # os.system(f"python reg_t12mni_N4corr.py {p} {scan_id} {sub_id} {session}")
+    #                 os.system(f"python cbf2mni.py {p} {scan_id} {sub_id} {session}")
 
-        else:
-            print('Skipping:', p)
+    #     else:
+    #         print('Skipping:', p)
 
 def create_participant_file(output_dir):
     mapping = subj_to_scan_id()
@@ -999,7 +1016,7 @@ def find_count_inter_pairs_per_sex(pairs, sex):
     print(count)
     return same_sex_pairs
 
-def find_failed_rigid_pairs(csv_file):
+def find_failed_rigid_pairs(csv_file, index):
 
     # Read the CSV file and filter pairs based on time in seconds
     pairs_less_than_15s = []
@@ -1007,8 +1024,9 @@ def find_failed_rigid_pairs(csv_file):
         reader = csv.reader(file)
         next(reader)  # Skip header
         for i, row in enumerate(reader):
-            if i >= 432:
+            if i >= index:
                 break
+            
             pair, time_seconds, _ = row
             time_seconds_float = float(time_seconds.split(':')[1]) * 60 + float(time_seconds.split(':')[2])
             if time_seconds_float < 15:
@@ -1016,12 +1034,148 @@ def find_failed_rigid_pairs(csv_file):
     scan_id_pairs = [(find_scan_ids(s)) for s in pairs_less_than_15s]
     return scan_id_pairs
 
+def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
+    """
+    Calculate the log jacobian of the deformation field and apply a mask to it.
+
+    This function calculates the log jacobian of the deformation field and applies a mask to it.
+    The mask is generated using the brain extracted images of the moving and fixed images.
+
+    Parameters:
+        inter_path (str): The path to the directory containing the deformation field for inter-subject registration.
+        intra_path (str): The path to the directory containing the deformation field for intra-subject registration.
+
+    Example:
+        >>> inter_path = "/path/to/inter-subject-reg/"
+        >>> intra_path = "/path/to/intra-subject-reg/"
+        >>> calculate_log_jacobian_masked(inter_path, intra_path)
+    """
+    df= pd.read_csv(df_path)
+    scan_id_1_list = []
+    scan_id_2_list = []
+    avg_log_jac_list = []
+    age_interval_list = []
+    init_age_list = []
+    group_list = []
+
+    # Iterate through the folders in the inter_path directory
+    for foldername in os.listdir(inter_path):
+        if '.csv' not in foldername:
+            # Extract the scan_id from the foldername
+            scan_id_1, scan_id_2 = find_scan_ids(foldername)
+            print(scan_id_1, scan_id_2)
+            # Filter the DataFrame based on the given scan_id_1 and scan_id_2
+            filtered_df = df[(df['scan_id_1'] == scan_id_1) & (df['scan_id_2'] == scan_id_2)]
+
+            # Check if there is a match
+            if not filtered_df.empty:
+                age_interval = filtered_df['age_interval'].iloc[0]
+                init_age = filtered_df['init_age'].iloc[0]
+            else:
+                age_interval = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['age_interval'].iloc[0]
+                init_age = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['init_age'].iloc[0]
+            # Check if the folder contains the logJacobian.nii.gz file
+            if 'logJacobian.nii.gz' in os.listdir(os.path.join(inter_path, foldername)):
+                # Load the logJacobian.nii.gz file
+                log_jacobian = nib.load(os.path.join(inter_path, foldername, 'logJacobian.nii.gz'))
+                # Load the image brain mask
+                mask = nib.load(os.path.join(inter_path, foldername, 'mask_trans.nii'))
+                # Apply the transformed mask to the log jacobian
+                log_jacobian_masked = log_jacobian.get_fdata() * mask.get_fdata()
+                # Save the masked log jacobian to a new file
+                # nib.save(nib.Nifti1Image(log_jacobian_masked, log_jacobian.affine), os.path.join(foldername, 'logJacobian_masked.nii.gz'))
+                # Exclude zeros outside the mask
+                masked_log_jacobian_values = log_jacobian_masked[mask != 0]
+
+                # Calculate the average absolute log Jacobian value on the masked areas
+                avg_log_jac = np.mean(np.abs(masked_log_jacobian_values))
+
+                scan_id_1_list.append(scan_id_1)
+                scan_id_2_list.append(scan_id_2)
+                avg_log_jac_list.append(avg_log_jac)
+                age_interval_list.append(age_interval)
+                init_age_list.append(init_age)
+                group_list.append('inter')
+
+        # # Iterate through the folders in the intra_path directory
+        # for foldername, subfolders, filenames in os.walk(intra_path):
+        #     # Extract the scan_id from the foldername
+        #     scan_id = os.path.basename(foldername)
+        #     # Check if the folder contains the logJacobian.nii.gz file
+        #     if 'logJacobian.nii.gz' in filenames:
+        #         # Load the logJacobian.nii.gz file
+        #         log_jacobian = nib.load(os.path.join(foldername, 'logJacobian.nii.gz'))
+        #         # Load the moving image brain mask
+        #         moving_mask = nib.load(os.path.join(foldername, 'moving_mask.nii.gz'))
+        #         # Load the fixed image brain mask
+        #         fixed_mask = nib.load(os.path.join(foldername, 'fixed_mask.nii.gz'))
+        #         # Apply the moving mask to the log jacobian
+        #         log_jacobian_masked = log_jacobian.get_fdata() * moving_mask.get_fdata()
+        #         # Apply the fixed mask to the log jacobian
+        #         log_jacobian_masked = log_jacobian_masked * fixed_mask.get_fdata()
+        #         # Save the masked log jacobian to a new file
+        #         nib.save(nib.Nifti1Image(log_jacobian_masked, log_jacobian.affine), os.path.join(foldername, 'logJacobian_masked.nii.gz'))
+
+    # Create a DataFrame from the collected lists
+    avg_log_jac_df = pd.DataFrame({
+        'scan_id_1': scan_id_1_list,
+        'scan_id_2': scan_id_2_list,
+        'avg_log_jac': avg_log_jac_list,
+        'age_interval': age_interval_list,
+        'init_age': init_age_list,
+        'group': group_list
+    })
+
+    mean_avg_log_jac = avg_log_jac_df['avg_log_jac'].mean()
+    std_avg_log_jac = avg_log_jac_df['avg_log_jac'].std()
+
+    print("Mean of avg_log_jac:", mean_avg_log_jac)
+    print("Standard deviation of avg_log_jac:", std_avg_log_jac)
+
 if __name__ == "__main__":
     # output_directory = "/home/andjela/Documents/intra-inter-ddfs/src/"
     # create_participant_file(output_directory)
 
     tsv_file_path = "all-participants.tsv"
+    # tsv_file_path = 'C:\\Users\\andje\\Downloads\\participants.tsv'
     data = read_tsv_file(tsv_file_path)
+
+    inter_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/"
+    intra_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_r/"
+    df_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/pairs_ia_r.csv"
+    calculate_log_jacobian_masked(inter_path, intra_path, df_path)
+
+    # intra_pairs = find_intra_pairs(data)
+    # print('intra', len(intra_pairs))
+    # print(intra_pairs[:5])
+
+    # Initialize lists to store the data
+    # scan_id_1_list = []
+    # scan_id_2_list = []
+    # init_age = []
+    # age_interval_list = []
+    # sex_list = []
+    # group_list = ['intra'] * len(intra_pairs)  # Create a list of 'intra' values
+
+    # Iterate through the list of tuple pairs
+    # for item in intra_pairs:
+    #     scan_id_1_list.append(item[0][1])
+    #     scan_id_2_list.append(item[1][1])
+    #     init_age.append(item[0][2])
+    #     age_interval_list.append(abs(item[0][2] - item[1][2]))
+    #     sex_list.append([item[0][3], item[1][3]])
+
+    # # Create a DataFrame
+    # df_intra = pd.DataFrame({
+    #     'scan_id_1': scan_id_1_list,
+    #     'scan_id_2': scan_id_2_list,
+    #     'init_age': init_age,
+    #     'age_interval': age_interval_list,
+    #     'sex': sex_list,
+    #     'group': group_list  # Add the 'group' column
+    # })
+    # print(df)
+        
 
     # Separate intra-sub by sex
     # folders_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_ra/intra/"
@@ -1112,15 +1266,30 @@ if __name__ == "__main__":
     # print(len(pairs))
 
     # # Inter reg on pairs with matching init age, age interval and sex (ias) # #
-    img_dir = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/work_dir/reg_n4_wdir/'
-    img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
-    img_dir_init_transfo = ''
-    transfo = 'rigid'
+    # img_dir = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/work_dir/reg_n4_wdir/'
+    # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
+    # img_dir_init_transfo = ''
+    # transfo = 'rigid'
 
-    selected_ias_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=True)
+    # selected_ias_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=True)
+    # print('IAS', len(selected_ias_pairs))
 
-    scan_to_sub = scan_id_to_sub_id(tsv_file_path)
-    scan_to_session = scan_id_to_session(tsv_file_path)
+    # df_inter_ias_r = pd.DataFrame([(pair[0][1], pair[1][1], min(pair[0][2], pair[1][2]), abs(pair[0][2] - pair[1][2]), [pair[0][3], pair[1][3]], 'inter') for pair in selected_ias_pairs],
+    #                   columns=['scan_id_1', 'scan_id_2', 'init_age', 'age_interval', 'sex', 'group'])
+
+    # # Concatenate the two DataFrames
+    # df_ias = pd.concat([df_intra, df_inter_ias_r], ignore_index=True)
+    # print(df_ias)
+    # df_ias.to_csv('C:\\Users\\andje\\Downloads\\pairs_ias_r.csv')
+
+    # scan_to_sub = scan_id_to_sub_id(tsv_file_path)
+    # scan_to_session = scan_id_to_session(tsv_file_path)
+
+    # scan_ids_to_find = [("PS16_002", "PS17_024"), ("PS16_054", "PS17_007"), ("PS0322-10-2", "PS17_007"), ("PS1477-10-1", "PS17_007"), ("PS16_006", "PS17_007")]
+    # inter_last_pairs_to_redo = find_pairs_by_scan_ids(scan_ids_to_find, selected_ias_pairs)
+    # # print(inter_last_pairs_to_redo)
+    # for pair in inter_last_pairs_to_redo:
+    #     run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
     
     # # # # TESTING A PAIR
     # tryout_pair = selected_ias_pairs[0]
@@ -1142,22 +1311,57 @@ if __name__ == "__main__":
     #         time_taken = timedelta(seconds=end-start)
     #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
 
-    csv_file = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/timing_results.csv'
-    # csv_file = 'C:\\Users\\andje\\Downloads\\timing_results_inter_ias.csv'
-    failed_inter_rigid_pairs = find_failed_rigid_pairs(csv_file)
+    # csv_file = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/timing_results.csv'
+    # # csv_file = 'C:\\Users\\andje\\Downloads\\timing_results_inter_ias.csv'
+    # failed_inter_rigid_pairs = find_failed_rigid_pairs(csv_file, 432)
     
     
-    inter_pairs_to_redo = find_pairs_by_scan_ids(failed_inter_rigid_pairs, selected_ias_pairs)
+    # inter_pairs_to_redo = find_pairs_by_scan_ids(failed_inter_rigid_pairs, selected_ias_pairs)
     
     # tryout_pair = inter_pairs_to_redo[0]
-    for pair in inter_pairs_to_redo:
-        run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+    # for pair in inter_pairs_to_redo:
+    #     run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
 
 
     # # Inter reg on pairs with matching init age, age interval (ia) # #
     # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
 
-    # # selected_ia_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=False)
+    # selected_ia_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=False)
+    # print('IA', len(selected_ia_pairs))
+    
+    # df_inter_ia_r = pd.DataFrame([(pair[0][1], pair[1][1], min(pair[0][2], pair[1][2]), abs(pair[0][2] - pair[1][2]), [pair[0][3], pair[1][3]], 'inter') for pair in selected_ia_pairs],
+    #                   columns=['scan_id_1', 'scan_id_2', 'init_age', 'age_interval', 'sex', 'group'])
+
+    # # Concatenate the two DataFrames
+    # df_ia = pd.concat([df_intra, df_inter_ia_r])
+    # print(df_ia)
+    # df_ia.to_csv('C:\\Users\\andje\\Downloads\\pairs_ia_r.csv')
+
+    # # Convert lists to sets and find their intersection
+    # common_elements = set(selected_ias_pairs).intersection(set(selected_ia_pairs))
+
+    # # Convert the result back to a list if needed
+    # common_elements_list = list(common_elements)
+    # print(common_elements_list)
+    # print(len(selected_ia_pairs), len(selected_ias_pairs))
+
+    # csv_file = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/timing_results.csv'
+    # csv_file = 'C:\\Users\\andje\\Downloads\\timing_results_inter_ias.csv'
+    # failed_inter_rigid_pairs = find_failed_rigid_pairs(csv_file, 433)
+    # csv_file = 'C:\\Users\\andje\\Downloads\\timing_results_inter_ia.csv'
+    # failed_inter_rigid_pairs = find_failed_rigid_pairs(csv_file, 433)
+    # print(len(failed_inter_rigid_pairs))
+    # print(failed_inter_rigid_pairs)
+    
+    
+    # inter_pairs_to_redo = find_pairs_by_scan_ids(failed_inter_rigid_pairs, selected_ia_pairs)
+    # print(len(inter_pairs_to_redo))
+    # print(inter_pairs_to_redo)
+    # print(len(selected_ia_cd pairs))
+
+    # for count, pair in enumerate(inter_pairs_to_redo):
+    #     print('ITERATION: ', count)
+    #     run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
 
     # # # SAVING RESULTS
     # csv_output_path = f'{img_dir_out}timing_results.csv'
@@ -1195,10 +1399,21 @@ if __name__ == "__main__":
     #         time_taken = timedelta(seconds=end-start)
     #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
 
+    
     # # # # # For inter_ias_r # # # # #
     # img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
     # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
     # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
+
+    # for pair in inter_pairs_to_redo:
+    #     run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
+
+    # scan_ids_to_find = [("PS16_002", "PS17_024"), ("PS16_054", "PS17_007"), ("PS0322-10-2", "PS17_007"), ("PS1477-10-1", "PS17_007"), ("PS16_006", "PS17_007")]
+    # inter_last_pairs_to_redo = find_pairs_by_scan_ids(scan_ids_to_find, selected_ias_pairs)
+    # # print(inter_last_pairs_to_redo)
+    # for pair in inter_last_pairs_to_redo:
+    #     # run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+    #     run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
 
     # # # TRYOUT A PAIR # #
     # # tryout_pair = selected_ias_pairs[0]
@@ -1219,10 +1434,42 @@ if __name__ == "__main__":
     #         time_taken = timedelta(seconds=end-start)
     #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
 
-    # # # # # For inter_ias_r # # # # #
+    # # # # # For inter_ia_r # # # # #
     # img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
     # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
     # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/'
+
+    # file_to_check = 'logJacobian.nii.gz'
+    # folders_to_redo = find_folders_without_file(img_dir_fix, file_to_check)
+    # pairs_to_redo = find_pairs_by_scan_ids(folders_to_redo, selected_ia_pairs)
+    # # print(len(pairs_to_redo))
+    # for count, pair in enumerate(pairs_to_redo):
+    #     print('ITERATION: ', count)
+    #     run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
+
+    # for count, pair in enumerate(inter_pairs_to_redo):
+    #     print('ITERATION: ', count)
+    #     run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
+
+    #     # Get the current date and time
+    #     current_time = datetime.now()
+
+    #     # Check if the current time meets a condition
+    #     if current_time.hour == 1 and current_time.minute == 58:
+    #         # If the condition is met, write a certain variable to a text file
+    #         with open("output_inter_ia_r.txt", "w") as file:
+    #             file.write(count, pair)
+    #         break
+
+    # with open('output_inter_ia_r.txt', 'r') as file:
+    #     # Read the first line and split it into two values
+    #     values = file.readline().split()
+    #     # Assign the values to variables
+    #     count = int(values[0])
+    #     pair = values[1]
+    
+    # for pair in inter_pairs_to_redo[count:]:
+    #     run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
 
     # csv_output_path = f'{img_dir_out}timing_results.csv'
     # if not os.path.exists(csv_output_path):
