@@ -1059,7 +1059,45 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
     group_list = []
 
     # Iterate through the folders in the inter_path directory
-    for foldername in os.listdir(inter_path):
+    # for foldername in os.listdir(inter_path):
+    #     if '.csv' not in foldername:
+    #         # Extract the scan_id from the foldername
+    #         scan_id_1, scan_id_2 = find_scan_ids(foldername)
+    #         print(scan_id_1, scan_id_2)
+    #         # Filter the DataFrame based on the given scan_id_1 and scan_id_2
+    #         filtered_df = df[(df['scan_id_1'] == scan_id_1) & (df['scan_id_2'] == scan_id_2)]
+
+    #         # Check if there is a match
+    #         if not filtered_df.empty:
+    #             age_interval = filtered_df['age_interval'].iloc[0]
+    #             init_age = filtered_df['init_age'].iloc[0]
+    #         else:
+    #             age_interval = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['age_interval'].iloc[0]
+    #             init_age = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['init_age'].iloc[0]
+    #         # Check if the folder contains the logJacobian.nii.gz file
+    #         if 'logJacobian.nii.gz' in os.listdir(os.path.join(inter_path, foldername)):
+    #             # Load the logJacobian.nii.gz file
+    #             log_jacobian = nib.load(os.path.join(inter_path, foldername, 'logJacobian.nii.gz'))
+    #             # Load the image brain mask
+    #             mask = nib.load(os.path.join(inter_path, foldername, 'mask_trans.nii'))
+    #             # Apply the transformed mask to the log jacobian
+    #             log_jacobian_masked = log_jacobian.get_fdata() * mask.get_fdata()
+    #             # Save the masked log jacobian to a new file
+    #             # nib.save(nib.Nifti1Image(log_jacobian_masked, log_jacobian.affine), os.path.join(foldername, 'logJacobian_masked.nii.gz'))
+    #             # Exclude zeros outside the mask
+    #             masked_log_jacobian_values = log_jacobian_masked[mask != 0]
+
+    #             # Calculate the average absolute log Jacobian value on the masked areas
+    #             avg_log_jac = np.mean(np.abs(masked_log_jacobian_values))
+
+    #             scan_id_1_list.append(scan_id_1)
+    #             scan_id_2_list.append(scan_id_2)
+    #             avg_log_jac_list.append(avg_log_jac)
+    #             age_interval_list.append(age_interval)
+    #             init_age_list.append(init_age)
+    #             group_list.append('inter')
+
+    for foldername in os.listdir(intra_path):
         if '.csv' not in foldername:
             # Extract the scan_id from the foldername
             scan_id_1, scan_id_2 = find_scan_ids(foldername)
@@ -1097,25 +1135,6 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
                 init_age_list.append(init_age)
                 group_list.append('inter')
 
-        # # Iterate through the folders in the intra_path directory
-        # for foldername, subfolders, filenames in os.walk(intra_path):
-        #     # Extract the scan_id from the foldername
-        #     scan_id = os.path.basename(foldername)
-        #     # Check if the folder contains the logJacobian.nii.gz file
-        #     if 'logJacobian.nii.gz' in filenames:
-        #         # Load the logJacobian.nii.gz file
-        #         log_jacobian = nib.load(os.path.join(foldername, 'logJacobian.nii.gz'))
-        #         # Load the moving image brain mask
-        #         moving_mask = nib.load(os.path.join(foldername, 'moving_mask.nii.gz'))
-        #         # Load the fixed image brain mask
-        #         fixed_mask = nib.load(os.path.join(foldername, 'fixed_mask.nii.gz'))
-        #         # Apply the moving mask to the log jacobian
-        #         log_jacobian_masked = log_jacobian.get_fdata() * moving_mask.get_fdata()
-        #         # Apply the fixed mask to the log jacobian
-        #         log_jacobian_masked = log_jacobian_masked * fixed_mask.get_fdata()
-        #         # Save the masked log jacobian to a new file
-        #         nib.save(nib.Nifti1Image(log_jacobian_masked, log_jacobian.affine), os.path.join(foldername, 'logJacobian_masked.nii.gz'))
-
     # Create a DataFrame from the collected lists
     avg_log_jac_df = pd.DataFrame({
         'scan_id_1': scan_id_1_list,
@@ -1141,7 +1160,7 @@ if __name__ == "__main__":
     data = read_tsv_file(tsv_file_path)
 
     inter_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/"
-    intra_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_r/"
+    intra_path = "/home/andim/intra-inter-ddfs/intra_mix_r/"
     df_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/pairs_ia_r.csv"
     calculate_log_jacobian_masked(inter_path, intra_path, df_path)
 
