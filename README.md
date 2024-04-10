@@ -8,4 +8,4 @@
 # Log Jacobian Analysis
 |![](images/logJac_age_interval_N_NO.png)|
 |:--:| 
-|Non-distinct distributions of the average absolute log Jacobian value amongst the selected pairs for both no overlap (left) and overlap (right) scenarios with regards to the age interval per pair colored by their pair type (or label). The ias_r experiment results are shown on top and ia_r on the bottom|
+|Non-distinct distributions of the average absolute log Jacobian value amongst the selected pairs for both no overlap (left) and overlap (right) scenarios with regards to the age interval per pair colored by their pair type (or label). The ias_r experiment (538 pairs) results are shown on top and ia_r (598 pairs) on the bottom|
