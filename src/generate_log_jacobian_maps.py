@@ -1033,8 +1033,7 @@ def find_failed_rigid_pairs(csv_file, index):
                 pairs_less_than_15s.append(pair)
     scan_id_pairs = [(find_scan_ids(s)) for s in pairs_less_than_15s]
     return scan_id_pairs
-
-def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
+def mask_log_jacobian(log_JD_path, df_path, group):
     """
     Calculate the log jacobian of the deformation field and apply a mask to it.
 
@@ -1042,13 +1041,12 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
     The mask is generated using the brain extracted images of the moving and fixed images.
 
     Parameters:
-        inter_path (str): The path to the directory containing the deformation field for inter-subject registration.
-        intra_path (str): The path to the directory containing the deformation field for intra-subject registration.
+        log_JD_path (str): The path to the directory containing the log Jacobian maps and mask.
+        df_path (str): The path to the directory containing the pairs information.
 
     Example:
-        >>> inter_path = "/path/to/inter-subject-reg/"
-        >>> intra_path = "/path/to/intra-subject-reg/"
-        >>> calculate_log_jacobian_masked(inter_path, intra_path)
+        >>> log_JD_path = "/path/to/inter-subject-reg/"
+        >>> df_path = "/path/to/intra-subject-reg/"
     """
     df= pd.read_csv(df_path)
     scan_id_1_list = []
@@ -1059,45 +1057,7 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
     group_list = []
 
     # Iterate through the folders in the inter_path directory
-    # for foldername in os.listdir(inter_path):
-    #     if '.csv' not in foldername:
-    #         # Extract the scan_id from the foldername
-    #         scan_id_1, scan_id_2 = find_scan_ids(foldername)
-    #         print(scan_id_1, scan_id_2)
-    #         # Filter the DataFrame based on the given scan_id_1 and scan_id_2
-    #         filtered_df = df[(df['scan_id_1'] == scan_id_1) & (df['scan_id_2'] == scan_id_2)]
-
-    #         # Check if there is a match
-    #         if not filtered_df.empty:
-    #             age_interval = filtered_df['age_interval'].iloc[0]
-    #             init_age = filtered_df['init_age'].iloc[0]
-    #         else:
-    #             age_interval = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['age_interval'].iloc[0]
-    #             init_age = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['init_age'].iloc[0]
-    #         # Check if the folder contains the logJacobian.nii.gz file
-    #         if 'logJacobian.nii.gz' in os.listdir(os.path.join(inter_path, foldername)):
-    #             # Load the logJacobian.nii.gz file
-    #             log_jacobian = nib.load(os.path.join(inter_path, foldername, 'logJacobian.nii.gz'))
-    #             # Load the image brain mask
-    #             mask = nib.load(os.path.join(inter_path, foldername, 'mask_trans.nii'))
-    #             # Apply the transformed mask to the log jacobian
-    #             log_jacobian_masked = log_jacobian.get_fdata() * mask.get_fdata()
-    #             # Save the masked log jacobian to a new file
-    #             # nib.save(nib.Nifti1Image(log_jacobian_masked, log_jacobian.affine), os.path.join(foldername, 'logJacobian_masked.nii.gz'))
-    #             # Exclude zeros outside the mask
-    #             masked_log_jacobian_values = log_jacobian_masked[mask != 0]
-
-    #             # Calculate the average absolute log Jacobian value on the masked areas
-    #             avg_log_jac = np.mean(np.abs(masked_log_jacobian_values))
-
-    #             scan_id_1_list.append(scan_id_1)
-    #             scan_id_2_list.append(scan_id_2)
-    #             avg_log_jac_list.append(avg_log_jac)
-    #             age_interval_list.append(age_interval)
-    #             init_age_list.append(init_age)
-    #             group_list.append('inter')
-
-    for foldername in os.listdir(intra_path):
+    for foldername in os.listdir(log_JD_path):
         if '.csv' not in foldername:
             # Extract the scan_id from the foldername
             scan_id_1, scan_id_2 = find_scan_ids(foldername)
@@ -1113,11 +1073,11 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
                 age_interval = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['age_interval'].iloc[0]
                 init_age = df[(df['scan_id_1'] == scan_id_2) & (df['scan_id_2'] == scan_id_1)]['init_age'].iloc[0]
             # Check if the folder contains the logJacobian.nii.gz file
-            if 'logJacobian.nii.gz' in os.listdir(os.path.join(inter_path, foldername)):
+            if 'logJacobian.nii.gz' in os.listdir(os.path.join(log_JD_path, foldername)):
                 # Load the logJacobian.nii.gz file
-                log_jacobian = nib.load(os.path.join(inter_path, foldername, 'logJacobian.nii.gz'))
+                log_jacobian = nib.load(os.path.join(log_JD_path, foldername, 'logJacobian.nii.gz'))
                 # Load the image brain mask
-                mask = nib.load(os.path.join(inter_path, foldername, 'mask_trans.nii'))
+                mask = nib.load(os.path.join(log_JD_path, foldername, 'mask_trans.nii'))
                 # Apply the transformed mask to the log jacobian
                 log_jacobian_masked = log_jacobian.get_fdata() * mask.get_fdata()
                 # Save the masked log jacobian to a new file
@@ -1133,16 +1093,29 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
                 avg_log_jac_list.append(avg_log_jac)
                 age_interval_list.append(age_interval)
                 init_age_list.append(init_age)
-                group_list.append('inter')
+                group_list.append(group)
+
+    return scan_id_1_list, scan_id_2_list, avg_log_jac_list, age_interval_list, init_age_list, group_list
+
+def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
+    """
+    Generates a dataframe for both intra and inter log Jacobian values
+
+    """
+    # Calculate the log Jacobian values for the intra-subject registration
+    scan_id_1_list_intra, scan_id_2_list_intra, avg_log_jac_list_intra, age_interval_list_intra, init_age_list_intra, group_list_intra = mask_log_jacobian(intra_path, df_path, 'intra')
+
+    # Calculate the log Jacobian values for the inter-subject registration
+    scan_id_1_list_inter, scan_id_2_list_inter, avg_log_jac_list_inter, age_interval_list_inter, init_age_list_inter, group_list_inter = mask_log_jacobian(inter_path, df_path, 'inter')
 
     # Create a DataFrame from the collected lists
     avg_log_jac_df = pd.DataFrame({
-        'scan_id_1': scan_id_1_list,
-        'scan_id_2': scan_id_2_list,
-        'avg_log_jac': avg_log_jac_list,
-        'age_interval': age_interval_list,
-        'init_age': init_age_list,
-        'group': group_list
+        'scan_id_1': scan_id_1_list_intra + scan_id_1_list_inter,
+        'scan_id_2': scan_id_2_list_intra + scan_id_2_list_inter,
+        'avg_log_jac': avg_log_jac_list_intra + avg_log_jac_list_inter,
+        'age_interval': age_interval_list_intra + age_interval_list_inter,
+        'init_age': init_age_list_intra + init_age_list_inter,
+        'group': group_list_intra + group_list_inter
     })
 
     mean_avg_log_jac = avg_log_jac_df['avg_log_jac'].mean()
@@ -1152,51 +1125,12 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
     print("Standard deviation of avg_log_jac:", std_avg_log_jac)
 
 if __name__ == "__main__":
-    # output_directory = "/home/andjela/Documents/intra-inter-ddfs/src/"
-    # create_participant_file(output_directory)
 
     tsv_file_path = "all-participants.tsv"
-    # tsv_file_path = 'C:\\Users\\andje\\Downloads\\participants.tsv'
+    
     data = read_tsv_file(tsv_file_path)
 
-    inter_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/"
-    intra_path = "/home/andim/intra-inter-ddfs/intra_mix_r/"
-    df_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/pairs_ia_r.csv"
-    calculate_log_jacobian_masked(inter_path, intra_path, df_path)
-
-    # intra_pairs = find_intra_pairs(data)
-    # print('intra', len(intra_pairs))
-    # print(intra_pairs[:5])
-
-    # Initialize lists to store the data
-    # scan_id_1_list = []
-    # scan_id_2_list = []
-    # init_age = []
-    # age_interval_list = []
-    # sex_list = []
-    # group_list = ['intra'] * len(intra_pairs)  # Create a list of 'intra' values
-
-    # Iterate through the list of tuple pairs
-    # for item in intra_pairs:
-    #     scan_id_1_list.append(item[0][1])
-    #     scan_id_2_list.append(item[1][1])
-    #     init_age.append(item[0][2])
-    #     age_interval_list.append(abs(item[0][2] - item[1][2]))
-    #     sex_list.append([item[0][3], item[1][3]])
-
-    # # Create a DataFrame
-    # df_intra = pd.DataFrame({
-    #     'scan_id_1': scan_id_1_list,
-    #     'scan_id_2': scan_id_2_list,
-    #     'init_age': init_age,
-    #     'age_interval': age_interval_list,
-    #     'sex': sex_list,
-    #     'group': group_list  # Add the 'group' column
-    # })
-    # print(df)
-        
-
-    # Separate intra-sub by sex
+    # # # # # Separate intra-sub by sex # # # # #
     # folders_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/intra_mix_ra/intra/"
     # folders_dest = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs"
     # separate_intra_by_sex(folders_path, tsv_file_path, folders_dest, 'ra')
@@ -1524,8 +1458,6 @@ if __name__ == "__main__":
     # run_ants_intra_reg(tryout_pair, img_dir, img_dir_out)
     # run_ants_registration(tryout_pair, transfo, img_dir, img_dir_out, img_dir_init_transfo)
     # create_ddf_file(tryout_pair, transfo, img_dir, img_dir_out)
-        
-    
 
     # # # SAVING RESULTS
     # csv_output_path = f'{img_dir_out}timing_results.csv'
@@ -1544,4 +1476,10 @@ if __name__ == "__main__":
     #         end = timer()
     #         time_taken = timedelta(seconds=end-start)
     #         csv_writer.writerow([f'{mov}_{fix}', time_taken, interval])
+
+    # # # # # Calculate Log Jacobians # # # # #
+    # inter_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ia_r/"
+    # intra_path = "/home/andim/intra-inter-ddfs/intra_mix_r/"
+    # df_path = "/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/pairs_ia_r.csv"
+    # calculate_log_jacobian_masked(inter_path, intra_path, df_path)
     
