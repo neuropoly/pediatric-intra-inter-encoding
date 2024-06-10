@@ -355,7 +355,7 @@ def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_tran
                 f"--interpolation Linear " \
                 f"--output [ {img_dir_out}{mov}_{fix}/mov2fix_, {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz, {img_dir_out}{mov}_{fix}/fix2mov_warped_image.nii.gz ] " \
                 f"--transform Affine[ 0.1 ] " \
-                f"--metric Mattes[ {img_dir}{p_fix}/{fix}.nii.gz, {img_dir}{p_mov}/{mov}.nii.gz, 1, 32, Regular, 0.3 ] " \
+                f"--metric Mattes[ {img_dir}work_dir/reg_n4_wdir/{p_fix}/{fix}/wf/n4/{fix}_corrected.nii.gz, {img_dir}work_dir/reg_n4_wdir/{p_mov}/{mov}/wf/n4/{mov}_corrected.nii.gz, 1, 32, Regular, 0.3 ] " \
                 f"--convergence [850x250x250,1e-7,25] " \
                 f"--shrink-factors 4x2x1 " \
                 f"--smoothing-sigmas 2x1x0vox " \
@@ -365,14 +365,37 @@ def run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_tran
                 )
         # warp subject calculated mov mask to fix
         os.system(f"antsApplyTransforms --default-value 0 --float 0 " \
-            f"--input /media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/{p_mov}/{mov}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz " \
+            f"--input {img_dir}work_dir2/cbf2mni_wdir/{p_mov}/{mov}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz " \
             f"--input-image-type 0 --interpolation Linear --output {img_dir_out}{mov}_{fix}/mask_trans.nii " \
             f"--reference-image {img_dir}{p_fix}/{fix}.nii.gz " \
             f"--transform {img_dir_out}{mov}_{fix}/mov2fix_0GenericAffine.mat")
         #brain extraction for mov image which becomes mov2fix_warped
         os.system(f'fslmaths {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz -mul {img_dir_out}{mov}_{fix}/mask_trans.nii {img_dir_out}{mov}_{fix}/{mov}_dtype.nii.gz -odt float')
         #brain extraction for fix image which stays fix
-        os.system(f'fslmaths {img_dir}{p_fix}/{fix}.nii.gz -mul /media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/{p_fix}/{fix}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz {img_dir_out}{mov}_{fix}/{fix}_dtype.nii.gz -odt float')
+        os.system(f'fslmaths {img_dir}{p_fix}/{fix}.nii.gz -mul {img_dir}work_dir2/cbf2mni_wdir/{p_fix}/{fix}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz {img_dir_out}{mov}_{fix}/{fix}_dtype.nii.gz -odt float')
+        #f"--use-estimate-learning-rate-once 1 " \ (invalid flag given by ANTs)
+        # os.system(f"antsRegistration --float --collapse-output-transforms 1 --dimensionality 3 " \
+        #         f"--initial-moving-transform [ {img_dir}{p_fix}/{fix}.nii.gz, {img_dir}{p_mov}/{mov}.nii.gz, 0 ] " \
+        #         f"--interpolation Linear " \
+        #         f"--output [ {img_dir_out}{mov}_{fix}/mov2fix_, {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz, {img_dir_out}{mov}_{fix}/fix2mov_warped_image.nii.gz ] " \
+        #         f"--transform Affine[ 0.1 ] " \
+        #         f"--metric Mattes[ {img_dir}{p_fix}/{fix}.nii.gz, {img_dir}{p_mov}/{mov}.nii.gz, 1, 32, Regular, 0.3 ] " \
+        #         f"--convergence [850x250x250,1e-7,25] " \
+        #         f"--shrink-factors 4x2x1 " \
+        #         f"--smoothing-sigmas 2x1x0vox " \
+        #         f"--use-histogram-matching 1 " \
+        #         f"--winsorize-image-intensities [ 0.005, 0.995 ] " \
+        #         f"--verbose 1"
+        #         )
+        # os.system(f"antsApplyTransforms --default-value 0 --float 0 " \
+        #     f"--input /media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/{p_mov}/{mov}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz " \
+        #     f"--input-image-type 0 --interpolation Linear --output {img_dir_out}{mov}_{fix}/mask_trans.nii " \
+        #     f"--reference-image {img_dir}{p_fix}/{fix}.nii.gz " \
+        #     f"--transform {img_dir_out}{mov}_{fix}/mov2fix_0GenericAffine.mat")
+        # #brain extraction for mov image which becomes mov2fix_warped
+        # os.system(f'fslmaths {img_dir_out}{mov}_{fix}/mov2fix_warped_image.nii.gz -mul {img_dir_out}{mov}_{fix}/mask_trans.nii {img_dir_out}{mov}_{fix}/{mov}_dtype.nii.gz -odt float')
+        # #brain extraction for fix image which stays fix
+        # os.system(f'fslmaths {img_dir}{p_fix}/{fix}.nii.gz -mul /media/andjela/SeagatePor/work_dir2/cbf2mni_wdir/{p_fix}/{fix}/wf/biniraze_mask/nihpd_asym_04.5-08.5_mask_trans_dtype.nii.gz {img_dir_out}{mov}_{fix}/{fix}_dtype.nii.gz -odt float')
         end = timer()
         print('TIME TAKEN:', timedelta(seconds=end-start))
         return interval, mov, fix
@@ -654,7 +677,7 @@ def run_ants_intra_syn_reg(pair, img_dir_fix, img_dir_mov, img_dir_out):
 
     return interval, mov, fix
 
-def run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out):
+def run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out, transfo):
     start = timer()
     p_mov, mov, age_mov, _ = pair[0]
     p_fix, fix, age_fix, _ = pair[1]
@@ -670,15 +693,21 @@ def run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out):
     if not os.path.exists(out_path):
         os.makedirs(out_path)
     # For rigid-inter
-    os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{mov}_{fix}/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/{mov}_dtype.nii.gz, 1, 4] " \
-        f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
-        f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
-        )
+    if transfo == 'rigid_inter':
+        os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{mov}_{fix}/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/{mov}_dtype.nii.gz, 1, 4] " \
+            f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
+            f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
+            )
     # For rigid-affine-inter
-    # os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{p_fix}/{fix}/wf/brainextraction/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/mov2fix_warped_image.nii.gz, 1, 4] " \
-    #     f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
-    #     f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
-    #     )
+    else:
+        os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{mov}_{fix}/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/fix2mov_warped_image.nii.gz, 1, 4] " \
+            f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
+            f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
+            )
+        # os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{p_fix}/{fix}/wf/brainextraction/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/mov2fix_warped_image.nii.gz, 1, 4] " \
+        #     f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
+        #     f"-c [10x5] -o [{out_path}movingToFixed, {out_path}movingToFixedDeformed.nii.gz] -v 1"
+        #     )
     os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixed0Warp.nii.gz {out_path}jacobian.nii.gz 0 1")
     os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixed0Warp.nii.gz {out_path}logJacobian.nii.gz 1 1")
 
@@ -686,6 +715,50 @@ def run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out):
     print('TIME TAKEN:', timedelta(seconds=end-start))
 
     return interval, mov, fix
+
+def test_log_jacobian_results(pair, img_dir_fix, img_dir_mov, img_dir_out):
+    start = timer()
+    p_mov, mov, age_mov, _ = pair[0]
+    p_fix, fix, age_fix, _ = pair[1]
+
+    # Ensure mov2fix is from younger subject to older
+    if age_mov > age_fix:
+        ('print switching mov and fix')
+        mov, fix = fix, mov
+        age_mov, age_fix = age_fix, age_mov
+        p_mov, p_fix = p_fix, p_mov
+
+    interval = age_fix-age_mov
+    out_path = f"{img_dir_out}{mov}_{fix}/"
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
+    # For rigid-inter
+    # os.system(f"antsRegistration -d 3 -m Demons[{img_dir_fix}{mov}_{fix}/{fix}_dtype.nii.gz, {img_dir_mov}{mov}_{fix}/{mov}_dtype.nii.gz, 1, 4] " \
+    #     f"-t SyN[0.1, 3, 0] -f 2x1 -s 1x0vox -u 0 " \
+    #     f"-c [10x5] -o [{out_path}movingToFixedN, {out_path}movingToFixedDeformedN.nii.gz] -v 1"
+    #     )
+    
+    # # For the forward warp (in the fixed space)
+    # os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixedN0Warp.nii.gz {out_path}jacobianN.nii.gz 0 1")
+    # os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixedN0Warp.nii.gz {out_path}logJacobianN.nii.gz 1 1")
+
+    # # For the inverse warp (in the moving space)
+    os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixedN0InverseWarp.nii.gz {out_path}jacobianNI.nii.gz 0 1")
+    os.system(f"CreateJacobianDeterminantImage 3 {out_path}movingToFixedN0InverseWarp.nii.gz {out_path}logJacobianNI.nii.gz 1 1")
+
+    end = timer()
+    print('TIME TAKEN:', timedelta(seconds=end-start))
+
+    current_log_jac = nib.load(f'{out_path}logJacobianNI.nii.gz').get_fdata()
+    previous_log_jac = nib.load(f'{out_path}logJacobian.nii.gz').get_fdata()
+
+    current_avg_log_jac_masked = mask_log_jacobians(img_dir_out, 'logJacobianNI.nii.gz', mov, fix)
+    previous_avg_log_jac_masked = mask_log_jacobians(img_dir_out, 'logJacobian.nii.gz', mov, fix)
+
+
+    print('Are the volumes the same:', current_log_jac == previous_log_jac)
+    print('previous avg log jac:', previous_avg_log_jac_masked)
+    print('current avg log jac:', current_avg_log_jac_masked)
 
 def create_ddf_file(pair, transfo, img_dir, img_dir_out):
     """
@@ -1033,7 +1106,27 @@ def find_failed_rigid_pairs(csv_file, index):
                 pairs_less_than_15s.append(pair)
     scan_id_pairs = [(find_scan_ids(s)) for s in pairs_less_than_15s]
     return scan_id_pairs
-def mask_log_jacobian(log_JD_path, df_path, group):
+
+def mask_log_jacobians(path, logJD_filename, mov, fix):
+    foldername = f'{mov}_{fix}'
+    # Load the logJacobian.nii.gz file
+    log_jacobian = nib.load(os.path.join(path, foldername, logJD_filename))
+    # Load the image brain mask
+    mask = nib.load(os.path.join(path, foldername, 'mask_trans.nii'))
+    # Apply the transformed mask to the log jacobian
+    log_jacobian_masked = log_jacobian.get_fdata() * mask.get_fdata()
+    # Save the masked log jacobian to a new file
+    # nib.save(nib.Nifti1Image(log_jacobian_masked, log_jacobian.affine), os.path.join(foldername, 'logJacobian_masked.nii.gz'))
+    # Exclude zeros outside the mask
+    masked_log_jacobian_values = log_jacobian_masked[mask != 0]
+
+    # Calculate the average absolute log Jacobian value on the masked areas
+    # avg_log_jac = np.mean(np.abs(masked_log_jacobian_values))
+    avg_log_jac = np.mean(masked_log_jacobian_values)
+
+    return avg_log_jac
+
+def mask_log_jacobians_per_group(log_JD_path, df_path, group):
     """
     Calculate the log jacobian of the deformation field and apply a mask to it.
 
@@ -1086,7 +1179,9 @@ def mask_log_jacobian(log_JD_path, df_path, group):
                 masked_log_jacobian_values = log_jacobian_masked[mask != 0]
 
                 # Calculate the average absolute log Jacobian value on the masked areas
-                avg_log_jac = np.mean(np.abs(masked_log_jacobian_values))
+                # avg_log_jac = np.mean(np.abs(masked_log_jacobian_values))
+                avg_log_jac = np.mean(masked_log_jacobian_values)
+
 
                 scan_id_1_list.append(scan_id_1)
                 scan_id_2_list.append(scan_id_2)
@@ -1103,10 +1198,10 @@ def calculate_log_jacobian_masked(inter_path, intra_path, df_path):
 
     """
     # Calculate the log Jacobian values for the intra-subject registration
-    scan_id_1_list_intra, scan_id_2_list_intra, avg_log_jac_list_intra, age_interval_list_intra, init_age_list_intra, group_list_intra = mask_log_jacobian(intra_path, df_path, 'intra')
+    scan_id_1_list_intra, scan_id_2_list_intra, avg_log_jac_list_intra, age_interval_list_intra, init_age_list_intra, group_list_intra = mask_log_jacobians_per_group(intra_path, df_path, 'intra')
 
     # Calculate the log Jacobian values for the inter-subject registration
-    scan_id_1_list_inter, scan_id_2_list_inter, avg_log_jac_list_inter, age_interval_list_inter, init_age_list_inter, group_list_inter = mask_log_jacobian(inter_path, df_path, 'inter')
+    scan_id_1_list_inter, scan_id_2_list_inter, avg_log_jac_list_inter, age_interval_list_inter, init_age_list_inter, group_list_inter = mask_log_jacobians_per_group(inter_path, df_path, 'inter')
 
     # Create a DataFrame from the collected lists
     avg_log_jac_df = pd.DataFrame({
@@ -1224,7 +1319,7 @@ if __name__ == "__main__":
     # img_dir_init_transfo = ''
     # transfo = 'rigid'
 
-    # selected_ias_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=True)
+    selected_ias_pairs = find_inter_pairs_with_matching_distribution_init(data, 25, same_sex=True)
     # print('IAS', len(selected_ias_pairs))
 
     # df_inter_ias_r = pd.DataFrame([(pair[0][1], pair[1][1], min(pair[0][2], pair[1][2]), abs(pair[0][2] - pair[1][2]), [pair[0][3], pair[1][3]], 'inter') for pair in selected_ias_pairs],
@@ -1235,8 +1330,8 @@ if __name__ == "__main__":
     # print(df_ias)
     # df_ias.to_csv('C:\\Users\\andje\\Downloads\\pairs_ias_r.csv')
 
-    # scan_to_sub = scan_id_to_sub_id(tsv_file_path)
-    # scan_to_session = scan_id_to_session(tsv_file_path)
+    scan_to_sub = scan_id_to_sub_id(tsv_file_path)
+    scan_to_session = scan_id_to_session(tsv_file_path)
 
     # scan_ids_to_find = [("PS16_002", "PS17_024"), ("PS16_054", "PS17_007"), ("PS0322-10-2", "PS17_007"), ("PS1477-10-1", "PS17_007"), ("PS16_006", "PS17_007")]
     # inter_last_pairs_to_redo = find_pairs_by_scan_ids(scan_ids_to_find, selected_ias_pairs)
@@ -1358,6 +1453,23 @@ if __name__ == "__main__":
     # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
     # img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
 
+    # img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_ra/'
+    # img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_ra/'
+    img_dir_out = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_ra/'
+
+    # # Tests for log Jacobian Calculations
+    pair = selected_ias_pairs[2]
+    print(f'Doing pair {pair}')
+    transfo = 'rigid_affine_inter'
+    # img_dir = ''
+    # img_dir_init_transfo = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
+    # interval, mov, fix = run_ants_registration(pair, transfo, img_dir, img_dir_out, img_dir_init_transfo, scan_to_sub, scan_to_session)
+    img_dir_fix = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_r/'
+    img_dir_mov = '/home/GRAMES.POLYMTL.CA/andim/intra-inter-ddfs/inter_ias_ra/'
+    run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out, transfo)
+    # test_log_jacobian_results(selected_ias_pairs[2], img_dir_fix, img_dir_mov, img_dir_out)
+
+     # # Redoing calculations
     # for pair in inter_pairs_to_redo:
     #     run_ants_inter_reg(pair, img_dir_fix, img_dir_mov, img_dir_out)
 
