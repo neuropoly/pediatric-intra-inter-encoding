@@ -1,4 +1,5 @@
-# Can We Encode Intra- and Inter-Variability with Log Jacobian Maps Derived from Brain Morphological Deformations Using Pediatric MRI Scans?
+# [Can We Encode Intra- and Inter-Variability with Log Jacobian Maps Derived from Brain Morphological Deformations Using Pediatric MRI Scans?](https://openreview.net/forum?id=4rKfNtCwmh)
+
 ![](images/preview_figure.png)
 *Example of log Jacobian maps used for training for both intra and inter pairs*
 # Environment Details
