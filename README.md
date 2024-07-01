@@ -19,3 +19,15 @@ conda activate tf2
 # Citation
 If this code was useful in any way, please think about citing our work as follows:
 -->
+# Citing
+MIDL 2024 Proceedings
+```bib
+@inproceedings{
+dimitrijevic2024can,
+title={Can We Encode Intra- and Inter-Variability with Log Jacobian Maps Derived from Brain Morphological Deformations Using Pediatric {MRI} Scans?},
+author={Andjela Dimitrijevic and Fanny D{\'e}geilh and Benjamin De Leener},
+booktitle={Medical Imaging with Deep Learning},
+year={2024},
+url={https://openreview.net/forum?id=4rKfNtCwmh}
+}
+```
